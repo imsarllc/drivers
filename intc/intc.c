@@ -1,3 +1,5 @@
+#include "intc.h"
+
 #include <linux/module.h>
 #include <linux/cdev.h>
 #include <linux/platform_device.h>
@@ -7,9 +9,14 @@
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/io.h>
+#include <linux/wait.h>
 #include <asm/io.h>
-#include "intc.h"
+#include <asm-generic/errno.h>
 #include "version.h"
+
+#ifndef HZ
+#define HZ 1
+#endif
 
 #define FPGA_REGS_SIZE      0x00010000
 #define INTC_IRQ_COUNT      16
@@ -45,18 +52,21 @@
 typedef struct {
 	// interrupt specific
 	bool valid; // indicates fresh interrupt
-	bool open;
+	const char* name;
+	unsigned long count;
+	signed long default_timeout; // in jiffies
+	wait_queue_head_t wq;
+} intc_dev_t;
+
+typedef struct {
 	int rcnt;   // number of addresses to read on interrupt
 	unsigned short *addr; // kmalloc'd array of addresses
 	unsigned short *data; // values read on interrupt to be copied to user
-	const char* name;
 	signed long timeout; // in jiffies
-	unsigned long count;
-} intc_dev_t;
+} intc_file_t;
 
 // globals
 static intc_dev_t fid[INTC_IRQ_COUNT]; // FPGA interrupt device
-static DECLARE_WAIT_QUEUE_HEAD( wq); // wait queue used to wake up read() from ISR
 static void *vfpga;       // virtual address to FPGA regs base address
 static void *vbase;       // virtual address to FPGA intc regs base address
 static int irq;           // request number
@@ -92,66 +102,65 @@ static int intc_enable(int intc_line, int enable)
 	return 0;
 }
 
-static void intc_addr_data_free(int ii)
+static void intc_addr_data_free(intc_file_t* file_data)
 {
-	if(fid[ii].addr) {
-		kfree(fid[ii].addr);
-		fid[ii].addr = NULL;
+	if(file_data->addr) {
+		kfree(file_data->addr);
+		file_data->addr = NULL;
 	}
-	if(fid[ii].data) {
-		kfree(fid[ii].data);
-		fid[ii].data = NULL;
+	if(file_data->data) {
+		kfree(file_data->data);
+		file_data->data = NULL;
 	}
-	fid[ii].rcnt = 0;
+	file_data->rcnt = 0;
 }
 
-static int intc_kmalloc(int ii, int bytes)
+static int intc_kmalloc(intc_file_t* file_data, int bytes)
 {
 	int k;
 
-	if(!(fid[ii].addr = (unsigned short *)kmalloc(bytes, GFP_ATOMIC))) {
+	if(!(file_data->addr = (unsigned short *)kmalloc(bytes, GFP_KERNEL))) {
 		printk(KERN_ERR "<%s> kmalloc failed\n", DEVICE_NAME);
-		return -1;
+		return -ENOMEM;
 	}
 
-	if(!(fid[ii].data = (unsigned short *)kmalloc(bytes, GFP_ATOMIC))) {
+	if(!(file_data->data = (unsigned short *)kmalloc(bytes, GFP_KERNEL))) {
 		printk(KERN_ERR "<%s> kmalloc failed\n", DEVICE_NAME);
-		kfree(fid[ii].addr);
-		fid[ii].addr = NULL;
-		return -1;
+		kfree(file_data->addr);
+		file_data->addr = NULL;
+		return -ENOMEM;
 	}
 
 	// initialize data
 	for(k = 0; k < bytes; k++)
-		fid[ii].data[k] = INTC_DATA_INVALID;
+		file_data->data[k] = INTC_DATA_INVALID;
 
-	fid[ii].rcnt = bytes / sizeof(unsigned short);
+	file_data->rcnt = bytes / sizeof(unsigned short);
 
 	return bytes;
 }
 
 static ssize_t intc_write(struct file *f, const char __user *buf, size_t bytes, loff_t * ppos)
 {
-	int ii, k;
-
-	ii = iminor(f->f_inode);
+	int kk;
+	int ii = iminor(f->f_inode);
+	intc_file_t* file_data = (intc_file_t*)f->private_data;
 
 	printk(KERN_DEBUG "<%s> file: write() %d\n", DEVICE_NAME, ii);
 
 	// free if necessary
-	intc_addr_data_free(ii);
+	intc_addr_data_free(file_data);
 
-	if (intc_kmalloc(ii, bytes) < 0)
-	return -ENOMEM;
+	if(intc_kmalloc(file_data, bytes) < 0)
+		return -ENOMEM;
 
-	if (copy_from_user((void *)fid[ii].addr, (const void __user *)buf, bytes))
-	{
-		intc_addr_data_free(ii);
+	if(copy_from_user((void *)file_data->addr, (const void __user *)buf, bytes)) {
+		intc_addr_data_free(file_data);
 		return -EFAULT;
 	}
 	// mask addresses
-	for (k=0; k<bytes/sizeof(unsigned short); k++)
-	fid[ii].addr[k] &= INTC_ADDR_MASK;
+	for(kk = 0; kk < bytes / sizeof(unsigned short); kk++)
+		file_data->addr[kk] &= INTC_ADDR_MASK;
 
 	return bytes;
 }
@@ -159,42 +168,41 @@ static ssize_t intc_write(struct file *f, const char __user *buf, size_t bytes, 
 static ssize_t intc_read(struct file *f, char __user * buf, size_t bytes, loff_t * off)
 {
 	int ii;
+	int kk;
+	int status;
+	intc_file_t* file_data = (intc_file_t*)f->private_data;
 
 	ii = iminor(f->f_inode);
 
 	printk(KERN_DEBUG "<%s> file: read()  %d\n", DEVICE_NAME, ii);
 
-	if (f->f_flags & O_NONBLOCK)
-	{
-		if (!fid[ii].valid)
-		return -EAGAIN;
-	}
-	else
-	{
-		int ret = fid[ii].timeout;
-
+	if(f->f_flags & O_NONBLOCK) {
+		if(!fid[ii].valid)
+			return -EAGAIN;
+	} else {
+		int ret = file_data->timeout;
+		int current_count = fid[ii].count;
 		// wake me up once interrupt received
-		wait_event_interruptible_timeout(wq, fid[ii].valid, ret);
-		if (!fid[ii].valid)// timeout
-		return -ETIME;
-		if (ret == -ERESTARTSYS && !fid[ii].valid)// unconditionally restart the system call
-		{
-			printk(KERN_DEBUG "<%s> file: read()  %d ERESTARTSYS\n", DEVICE_NAME, ii);
-			return ret;
-		}
+		status = wait_event_interruptible_timeout(fid[ii].wq, (fid[ii].count != current_count), ret);
+
+		if(status == 0) // timeout
+			return -ETIME;
+		else if(status < 0)
+			return status;
 	}
+
+	// read registers
+	for(kk = 0; kk < file_data->rcnt; kk++)
+		file_data->data[kk] = fpga_reg_read(file_data->addr[kk])
+	;
 
 	// copy data if any
-	if (!buf || !fid[ii].rcnt)
-	{
+	if(!buf || !file_data->rcnt) {
 		bytes = 0;
-	}
-	else
-	{
-		if (bytes > fid[ii].rcnt * sizeof(unsigned short))
-		bytes = fid[ii].rcnt * sizeof(unsigned short);
-		if (copy_to_user((unsigned int *)buf, fid[ii].data, bytes))
-		{
+	} else {
+		if(bytes > file_data->rcnt * sizeof(unsigned short))
+			bytes = file_data->rcnt * sizeof(unsigned short);
+		if(copy_to_user((unsigned int *)buf, file_data->data, bytes)) {
 			printk(KERN_ERR "<%s> file: read()  %d EFAULT\n", DEVICE_NAME, ii);
 			return -EFAULT;
 		}
@@ -210,7 +218,7 @@ static irqreturn_t intc_isr(int num, void *dev_id)
 {
 	unsigned short pending;
 	unsigned long flags;
-	int ii, k;
+	int ii;
 
 	spin_lock_irqsave(&ilock, flags);
 
@@ -221,17 +229,10 @@ static irqreturn_t intc_isr(int num, void *dev_id)
 	for(ii = 0; ii < INTC_IRQ_COUNT; ii++) {
 		if((pending & (1 << ii)) == 0)
 			continue;
-		//printk(KERN_DEBUG "<%s> isr() %d\n", DEVICE_NAME, ii);
-		// read registers
-		for(k = 0; k < fid[ii].rcnt; k++)
-			fid[ii].data[k] = fpga_reg_read(fid[ii].addr[k])
-		;
-
 		fid[ii].count++;
-
 		// wake up read()
 		fid[ii].valid = true;
-		wake_up_interruptible_sync(&wq);
+		wake_up_interruptible_sync(&fid[ii].wq);
 	}
 	intc_reg_write(INTC_CLR_OFFSET, pending); // clear interrupts
 	intc_reg_write(INTC_MASK_OFFSET, 0); // unmask
@@ -251,7 +252,6 @@ static long intc_irq_init(int num)
 	irqnum = num;
 	for(ii = 0; ii < INTC_IRQ_COUNT; ii++) {
 		fid[ii].valid = false;
-		intc_addr_data_free(ii);
 	}
 
 	if(request_irq(irqnum, intc_isr, 0, DEVICE_NAME, NULL)) {
@@ -273,6 +273,8 @@ static long intc_ioctl(struct file *f, unsigned int request, unsigned long arg)
 {
 	int ret = 0;
 	int ii;
+
+	intc_file_t* file_data = (intc_file_t*)f->private_data;
 
 	ii = iminor(f->f_inode);
 	switch(request) {
@@ -296,7 +298,7 @@ static long intc_ioctl(struct file *f, unsigned int request, unsigned long arg)
 			return -EFAULT;
 
 		printk(KERN_INFO "<%s> file: ioctl() %d, timeout:%d\n", DEVICE_NAME, ii, milliseconds);
-		fid[ii].timeout = (milliseconds * HZ) / 1000;
+		file_data->timeout = (milliseconds * HZ) / 1000;
 		break;
 	}
 	default:
@@ -313,38 +315,30 @@ static long intc_ioctl(struct file *f, unsigned int request, unsigned long arg)
 
 static int intc_open(struct inode *inode, struct file *f)
 {
-	int ii;
-	ii = iminor(f->f_inode);
+	intc_file_t* file_data;
+	int ii = iminor(f->f_inode);
 
-	if(fid[ii].open)
-		return -EBUSY;
-
-	if(open_files == 0) {
-		int res = intc_irq_init(irq);
-		if(res != 0)
-			return res;
+	if(!(file_data = (intc_file_t *)kzalloc(sizeof(intc_file_t), GFP_KERNEL))) {
+		printk(KERN_ERR "<%s> kmalloc failed\n", DEVICE_NAME);
+		return -ENOMEM;
 	}
+	f->private_data = file_data;
+	file_data->timeout = fid[ii].default_timeout;
 
 	open_files++;
 	printk(KERN_DEBUG "<%s> file: open()  %d (%d opened)\n", DEVICE_NAME, ii, open_files);
-
-	fid[ii].open = true;
 
 	return intc_enable(ii, 1);
 }
 
 static int intc_close(struct inode *inode, struct file *f)
 {
-	int ii;
-	ii = iminor(f->f_inode);
+	int ii = iminor(f->f_inode);
 
 	intc_enable(ii, 0);
 	open_files--;
-	fid[ii].open = false;
-	if(open_files == 0) {
-		free_irq(irqnum, NULL);
-		irqnum = 0;
-	}
+	intc_addr_data_free((intc_file_t*)f->private_data);
+	kfree(f->private_data);
 
 	printk(KERN_DEBUG "<%s> file: close() %d (%d opened)\n", DEVICE_NAME, ii, open_files);
 
@@ -370,7 +364,7 @@ ssize_t intc_count_show(struct device *dev, struct device_attribute *attr, char 
 ssize_t intc_timeout_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	s32 milliseconds;
-	milliseconds = fid[MINOR(dev->devt)].timeout * 1000 / HZ;
+	milliseconds = fid[MINOR(dev->devt)].default_timeout * 1000 / HZ;
 	return snprintf(buf, PAGE_SIZE, "%d\n", milliseconds);
 }
 
@@ -383,7 +377,7 @@ ssize_t intc_timeout_store(struct device *dev, struct device_attribute *attr, co
 		return -EINVAL;
 
 	timeout = (new * HZ) / 1000;
-	fid[MINOR(dev->devt)].timeout = timeout;
+	fid[MINOR(dev->devt)].default_timeout = timeout;
 	// Always return full write size even if we didn't consume all
 	return size;
 }
@@ -392,8 +386,7 @@ ssize_t intc_enable_show(struct device *dev, struct device_attribute *attr, char
 {
 	int enabled = 0;
 	unsigned short res;
-	intc_reg_read(res, INTC_EN_OFFSET)
-	&(1 << MINOR(dev->devt));
+	intc_reg_read(res, INTC_EN_OFFSET) & (1 << MINOR(dev->devt));
 	if(res)
 		enabled = 1;
 	return snprintf(buf, PAGE_SIZE, "%d\n", enabled);
@@ -422,14 +415,14 @@ ssize_t intc_set_store(struct device *dev, struct device_attribute *attr, const 
 
 static DEVICE_ATTR(name, S_IRUGO, intc_name_show, NULL);
 static DEVICE_ATTR(count, S_IRUGO, intc_count_show, NULL);
-static DEVICE_ATTR(timeout_ms, (S_IRUGO | S_IWUSR | S_IWGRP), intc_timeout_show, intc_timeout_store);
+static DEVICE_ATTR(default_timeout_ms, (S_IRUGO | S_IWUSR | S_IWGRP), intc_timeout_show, intc_timeout_store);
 static DEVICE_ATTR(enable, (S_IRUGO | S_IWUSR | S_IWGRP), intc_enable_show, intc_enable_store);
 static DEVICE_ATTR(set, S_IWUSR, NULL, intc_set_store);
 
 static struct attribute *attrs[] = {
 		&dev_attr_name.attr,
 		&dev_attr_count.attr,
-		&dev_attr_timeout_ms.attr,
+		&dev_attr_default_timeout_ms.attr,
 		&dev_attr_enable.attr,
 		&dev_attr_set.attr,
 		NULL, };
@@ -480,12 +473,14 @@ static int intc_of_remove(struct platform_device *of_dev)
 	iounmap(vbase);
 	cdev_del(&cdev);
 	for(ii = 0; ii < INTC_IRQ_COUNT; ii++) {
-		intc_addr_data_free(ii);
 		device_destroy(cl, MKDEV(MAJOR(dev), MINOR(dev) + ii));
 	}
 	class_destroy(cl);
 	unregister_chrdev_region(dev, INTC_IRQ_COUNT);
 	printk(KERN_DEBUG "<%s> exit: unregistered\n", DEVICE_NAME);
+
+	free_irq(irqnum, NULL);
+	irqnum = 0;
 
 	return 0;
 }
@@ -517,6 +512,10 @@ static int intc_of_probe(struct platform_device *ofdev)
 
 	irq = res->start;
 	printk(KERN_INFO "<%s> probe: IRQ read from DTS entry as %d\n", DEVICE_NAME, irq);
+	ret = intc_irq_init(irq);
+	if(ret != 0)
+		return ret;
+
 	res = platform_get_resource(ofdev, IORESOURCE_MEM, 0);
 	size = resource_size(res);
 #if DEBUG
@@ -541,15 +540,12 @@ static int intc_of_probe(struct platform_device *ofdev)
 	for(ii = 0; ii < INTC_IRQ_COUNT; ii++) {
 		// initialize interrupts
 		fid[ii].valid = false;
-		fid[ii].open = false;
-		fid[ii].rcnt = 0;
-		fid[ii].addr = NULL;
-		fid[ii].data = NULL;
 		fid[ii].name = NULL;
 		fid[ii].count = 0;
+		init_waitqueue_head(&fid[ii].wq);
 
 		// disable timeouts
-		fid[ii].timeout = MAX_SCHEDULE_TIMEOUT;
+		fid[ii].default_timeout = MAX_SCHEDULE_TIMEOUT;
 	}
 
 	for_each_child_of_node(ofdev->dev.of_node, child)
@@ -562,32 +558,32 @@ static int intc_of_probe(struct platform_device *ofdev)
 			dev_info(&ofdev->dev, "no property reg for child of FPGA interrupt controller\n");
 		} else {
 			fid[index].name = child->name;
-		printk(KERN_INFO "interrupt #%d = %s\n", index, child->name);
+			printk(KERN_INFO "interrupt #%d = %s\n", index, child->name);
+		}
+
+		ret = of_property_read_u32(child, "timeout_ms", &milliseconds);
+		if(ret < 0) {
+			dev_info(&ofdev->dev, "no property timeout for child of FPGA interrupt controller\n");
+		} else {
+			printk(KERN_INFO "interrupt #%d timeout = %d\n", index, milliseconds);
+			fid[index].default_timeout = (milliseconds * HZ) / 1000;
+		}
+
 	}
 
-	ret = of_property_read_u32(child, "timeout_ms", &milliseconds);
-	if(ret < 0) {
-		dev_info(&ofdev->dev, "no property timeout for child of FPGA interrupt controller\n");
-	} else {
-		printk(KERN_INFO "interrupt #%d timeout = %d\n", index, milliseconds);
-		fid[index].timeout = (milliseconds * HZ) / 1000;
-	}
+	intc_reset();
 
-}
+	printk(KERN_INFO "<%s> init: registered\n", DEVICE_NAME);
 
-intc_reset();
-
-printk(KERN_INFO "<%s> init: registered\n", DEVICE_NAME);
-
-return 0;
+	return 0;
 }
 
 static const struct of_device_id intc_of_match[] = {{.compatible = "imsar,intc", }, { /* end of list */}, };
-MODULE_DEVICE_TABLE( of, intc_of_match);
+MODULE_DEVICE_TABLE(of, intc_of_match);
 
 static struct platform_driver intc_of_driver = {.probe = intc_of_probe, .remove = intc_of_remove, .driver = {.name =
-DEVICE_NAME, .owner = THIS_MODULE, .of_match_table = intc_of_match, }, };
-module_platform_driver( intc_of_driver);
+		DEVICE_NAME, .owner = THIS_MODULE, .of_match_table = intc_of_match, }, };
+module_platform_driver(intc_of_driver);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Joseph Hancock <joseph.hancock@imsar.com> & Derrick Gibelyou <derrick.gibelyou@imsar.com>");
