@@ -13,7 +13,7 @@ all: $(KERNEL_VERSIONS)
 	$(foreach dir,$(drivers),$(MAKE) -C $(dir) all;)
 	mkdir -p build/$@
 	$(foreach dir,$(drivers),mv $(dir)/*.ko build/$@;)
-	$(foreach dir,$(drivers),cp $(dir)/*rules build/$@;)
+	$(foreach dir,$(drivers),cp $(dir)/*rules build/;)
 
 clean:
 	$(foreach dir,$(drivers),$(MAKE) -C $(dir) clean;)
