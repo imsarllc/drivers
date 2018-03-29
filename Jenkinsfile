@@ -16,6 +16,6 @@ node('watson')
   }
   stage('Archive')
   {
-    archiveArtifacts artifacts: 'build/*', fingerprint: true
+    archiveArtifacts artifacts: 'build/**', fingerprint: true
   }
 }
