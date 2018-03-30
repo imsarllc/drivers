@@ -4,6 +4,7 @@ node('watson')
 {
   stage('Checkout')
   {
+    cleanWs()
     checkout scm
   }
   stage('Build 2013.4')
