@@ -578,11 +578,21 @@ static int intc_of_probe(struct platform_device *ofdev)
 	return 0;
 }
 
-static const struct of_device_id intc_of_match[] = {{.compatible = "imsar,intc", }, { /* end of list */}, };
+static const struct of_device_id intc_of_match[] = {
+		{.compatible = "imsar,intc", },
+		{ /* end of list */},
+};
 MODULE_DEVICE_TABLE(of, intc_of_match);
 
-static struct platform_driver intc_of_driver = {.probe = intc_of_probe, .remove = intc_of_remove, .driver = {.name =
-		DEVICE_NAME, .owner = THIS_MODULE, .of_match_table = intc_of_match, }, };
+static struct platform_driver intc_of_driver = {
+		.probe = intc_of_probe,
+		.remove = intc_of_remove,
+		.driver = {
+				.name = DEVICE_NAME,
+				.owner = THIS_MODULE,
+				.of_match_table = intc_of_match,
+		},
+};
 module_platform_driver(intc_of_driver);
 
 MODULE_LICENSE("GPL");
