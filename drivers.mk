@@ -3,7 +3,7 @@ CROSS_COMPILE?=/fpga_tools/gcc/gcc-linaro-4.8-2014.4-x86_64_arm-linux-gnueabihf/
 
 KVER ?= 2016.4
 KBASE=~jenkins/workspace/linux-xlnx/build
-KDIR := $(KBASE)/$(KVER) # default
+KDIR := $(KBASE)/$(KVER)
 
 all: ../version.h
 	cp ../version.h .
