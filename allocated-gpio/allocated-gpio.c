@@ -110,7 +110,7 @@ static void create_pin_attrs(struct platform_device *pdev)
 	{
 		u32 gpio = of_get_gpio(child, 0);
 		if(gpio < 0) {
-			dev_info(&pdev->dev, "no property gpio for child of FPGA interrupt controller\n");
+			dev_info(&pdev->dev, "no property gpio for child of allocated-gpio\n");
 			continue;
 		}
 		status = gpio_request(gpio, child->name);
@@ -119,7 +119,7 @@ static void create_pin_attrs(struct platform_device *pdev)
 			dev_info(&pdev->dev, "Unable to request GPIO: %d(%s)", gpio, child->name);
 			continue;
 		}
-		printk(KERN_INFO "interrupt #%d = %s\n", gpio, child->name);
+		printk(KERN_INFO "GPIO #%d = %s\n", gpio, child->name);
 		attr_array[num_attrs].n.attr.name = child->name;
 		attr_array[num_attrs].n.attr.mode = S_IRUGO;
 		attr_array[num_attrs].n.show = gpio_state_show;
