@@ -22,21 +22,26 @@ struct gpio_attribute
 	u32 gpio;
 };
 
-static struct gpio_attribute* attr_array = 0;
-static struct attribute** attr_list = 0;
-static struct attribute_group* reg_attr_group = 0;
-static int num_attrs = 0;
+struct gpio_driver_data
+{
+	struct gpio_attribute* attr_array;
+	struct attribute** attr_list;
+	struct attribute_group reg_attr_group;
+	int num_attrs;
+};
+
 
 ssize_t gpio_state_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
+	struct gpio_driver_data *data = (struct gpio_driver_data*) dev->platform_data;
 	int ii = 0;
-	for (ii = 0; ii < num_attrs; ii++)
+	for (ii = 0; ii < data->num_attrs; ii++)
 	{
-		if (attr == &(attr_array[ii].n) )
+		if (attr == &(data->attr_array[ii].n) )
 		{
 			int ret;
-			printk(KERN_DEBUG "Address match for %s\n", attr_array[ii].n.attr.name);
-			ret = gpio_get_value_cansleep(attr_array[ii].gpio);
+			printk(KERN_DEBUG "Address match for %s\n", data->attr_array[ii].n.attr.name);
+			ret = gpio_get_value_cansleep(data->attr_array[ii].gpio);
 			return snprintf(buf, PAGE_SIZE, "%d\n", ret);
 		}
 	}
@@ -45,6 +50,7 @@ ssize_t gpio_state_show(struct device *dev, struct device_attribute *attr, char 
 
 ssize_t gpio_state_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t size)
 {
+	struct gpio_driver_data *data = (struct gpio_driver_data*) dev->platform_data;
 	int ii = 0;
 	int value = buf[0]-'0';
 	if (value != 0 && value != 1)
@@ -54,12 +60,12 @@ ssize_t gpio_state_store(struct device *dev, struct device_attribute *attr, cons
 	}
 
 	printk(KERN_DEBUG "Setting output %s to %c\n", attr->attr.name, buf[0]);
-	for (ii = 0; ii < num_attrs; ii++)
+	for (ii = 0; ii < data->num_attrs; ii++)
 	{
-		if (attr == &(attr_array[ii].n) )
+		if (attr == &(data->attr_array[ii].n) )
 		{
-			printk(KERN_DEBUG "Address match for %s\n", attr_array[ii].n.attr.name);
-			gpio_direction_output(attr_array[ii].gpio, value);
+			printk(KERN_DEBUG "Address match for %s\n", data->attr_array[ii].n.attr.name);
+			gpio_direction_output(data->attr_array[ii].gpio, value);
 			return size;
 		}
 	}
@@ -76,33 +82,35 @@ static void create_pin_attrs(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
 	struct device_node *child;
+	struct gpio_driver_data *data;
 
 	int status;
 	size_t attr_size;
 	size_t attr_list_size;
+	u32 num_attrs = of_get_child_count(np);
 
-	num_attrs = of_get_child_count(np);
+	data = (struct gpio_driver_data*)kzalloc(sizeof(struct gpio_driver_data), GFP_KERNEL);
+	if(PTR_ERR_OR_ZERO(data))
+	{
+		goto error;
+	}
+	data->num_attrs = num_attrs;
+	pdev->dev.platform_data = data;
 
 	printk(KERN_DEBUG "Creating %d attributes for %s\n", num_attrs, np->name);
 
 	attr_size = num_attrs * sizeof(struct gpio_attribute);
-	attr_array = (struct gpio_attribute*)kzalloc(attr_size, GFP_KERNEL);
-	if(PTR_ERR_OR_ZERO(attr_array))
+	data->attr_array = (struct gpio_attribute*)kzalloc(attr_size, GFP_KERNEL);
+	if(PTR_ERR_OR_ZERO(data->attr_array))
 	{
 		goto array_error;
 	}
 
 	attr_list_size = (num_attrs + 1) * sizeof(struct attribute*);
-	attr_list = (struct attribute**)kzalloc(attr_size, GFP_KERNEL);
-	if(PTR_ERR_OR_ZERO(attr_list))
+	data->attr_list = (struct attribute**)kzalloc(attr_size, GFP_KERNEL);
+	if(PTR_ERR_OR_ZERO(data->attr_list))
 	{
 		goto list_error;
-	}
-
-	reg_attr_group = (struct attribute_group*) kzalloc(sizeof(struct attribute_group),GFP_KERNEL);
-	if(PTR_ERR_OR_ZERO(reg_attr_group))
-	{
-		goto group_error;
 	}
 
 	num_attrs = 0;
@@ -120,36 +128,33 @@ static void create_pin_attrs(struct platform_device *pdev)
 			continue;
 		}
 		printk(KERN_INFO "GPIO #%d = %s\n", gpio, child->name);
-		attr_array[num_attrs].n.attr.name = child->name;
-		attr_array[num_attrs].n.attr.mode = S_IRUGO;
-		attr_array[num_attrs].n.show = gpio_state_show;
+		data->attr_array[num_attrs].n.attr.name = child->name;
+		data->attr_array[num_attrs].n.attr.mode = S_IRUGO;
+		data->attr_array[num_attrs].n.show = gpio_state_show;
 		//TODO: check dt param for input/output
 		if (1)
 		{
-			attr_array[num_attrs].n.store = gpio_state_store;
-			attr_array[num_attrs].n.attr.mode = S_IWUGO | S_IRUGO;
+			data->attr_array[num_attrs].n.store = gpio_state_store;
+			data->attr_array[num_attrs].n.attr.mode = S_IWUGO | S_IRUGO;
 		}
-		attr_array[num_attrs].gpio = gpio;
-		attr_list[num_attrs] = &attr_array[num_attrs].n.attr;
+		data->attr_array[num_attrs].gpio = gpio;
+		data->attr_list[num_attrs] = &data->attr_array[num_attrs].n.attr;
 		num_attrs++;
 	}
 
-	reg_attr_group->attrs = attr_list;
-	reg_attr_group->name ="io";
-	status = sysfs_create_group(&pdev->dev.kobj, reg_attr_group);
+	data->reg_attr_group.attrs = data->attr_list;
+	data->reg_attr_group.name ="io";
+	status = sysfs_create_group(&pdev->dev.kobj, &data->reg_attr_group);
 	if (status)
 		printk(KERN_ERR "Failed to create pin attributes: %d\n", status);
 	return;
 
-group_error:
-	reg_attr_group = 0;
 list_error:
-	kfree(attr_list);
-	attr_list = 0;
+	data->attr_list = 0;
+	kfree(data->attr_array);
 array_error:
-	kfree(attr_array);
-	attr_array = 0;
-
+	data->attr_array = 0;
+error:
 	printk(KERN_ERR "Unable to allocate register attributes\n");
 }
 
@@ -182,17 +187,15 @@ static int allocated_gpio_probe(struct platform_device *pdev)
  */
 static int allocated_gpio_remove(struct platform_device *pdev)
 {
+	struct gpio_driver_data *data = (struct gpio_driver_data*) pdev->dev.platform_data;
 	struct device_node *np = pdev->dev.of_node;
 	struct device_node *child;
 
-	if (reg_attr_group)
-		sysfs_remove_group(&pdev->dev.kobj, reg_attr_group);
-	if (reg_attr_group)
-		kfree(reg_attr_group);
-	if (attr_list)
-		kfree(attr_list);
-	if (attr_array)
-		kfree(attr_array);
+	sysfs_remove_group(&pdev->dev.kobj, &data->reg_attr_group);
+	if (data->attr_list)
+		kfree(data->attr_list);
+	if (data->attr_array)
+		kfree(data->attr_array);
 
 	for_each_child_of_node(np, child)
 	{
