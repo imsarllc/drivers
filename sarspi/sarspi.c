@@ -641,8 +641,8 @@ static void create_reg_attrs(struct sarspi_data *spidev)
 		goto list_error;
 	}
 
-	spidev->reg_attr_group = (struct attribute_group*) kzalloc(sizeof(struct attribute_group*),GFP_KERNEL);
-	if(PTR_ERR_OR_ZERO(spidev->attr_list))
+	spidev->reg_attr_group = (struct attribute_group*) kzalloc(sizeof(struct attribute_group),GFP_KERNEL);
+	if(PTR_ERR_OR_ZERO(spidev->reg_attr_group))
 	{
 		goto group_error;
 	}
