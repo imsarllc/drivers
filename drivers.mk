@@ -1,5 +1,5 @@
 #gcc 4.8 is used on Ubuntu 2014.04 (LTS), which is used on the Tegra TK1.
-CROSS_COMPILE?=/fpga_tools/gcc/gcc-linaro-4.8-2014.4-x86_64_arm-linux-gnueabihf/bin/arm-linux-gnueabihf-
+CROSS_COMPILE?=/opt/gcc/gcc-linaro-4.8-2014.4-x86_64_arm-linux-gnueabihf/bin/arm-linux-gnueabihf-
 
 KVER ?= 2016.4
 KBASE=~jenkins/workspace/linux-xlnx/build
