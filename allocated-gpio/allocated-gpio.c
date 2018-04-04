@@ -90,7 +90,7 @@ static void create_pin_attrs(struct platform_device *pdev)
 	u32 num_attrs = of_get_child_count(np);
 
 	data = (struct gpio_driver_data*)kzalloc(sizeof(struct gpio_driver_data), GFP_KERNEL);
-	if(PTR_ERR_OR_ZERO(data))
+	if (PTR_ERR_OR_ZERO(data))
 	{
 		goto error;
 	}
@@ -101,14 +101,14 @@ static void create_pin_attrs(struct platform_device *pdev)
 
 	attr_size = num_attrs * sizeof(struct gpio_attribute);
 	data->attr_array = (struct gpio_attribute*)kzalloc(attr_size, GFP_KERNEL);
-	if(PTR_ERR_OR_ZERO(data->attr_array))
+	if (PTR_ERR_OR_ZERO(data->attr_array))
 	{
 		goto array_error;
 	}
 
 	attr_list_size = (num_attrs + 1) * sizeof(struct attribute*);
 	data->attr_list = (struct attribute**)kzalloc(attr_size, GFP_KERNEL);
-	if(PTR_ERR_OR_ZERO(data->attr_list))
+	if (PTR_ERR_OR_ZERO(data->attr_list))
 	{
 		goto list_error;
 	}
@@ -117,12 +117,12 @@ static void create_pin_attrs(struct platform_device *pdev)
 	for_each_child_of_node(np, child)
 	{
 		u32 gpio = of_get_gpio(child, 0);
-		if(gpio < 0) {
+		if (gpio < 0) {
 			dev_info(&pdev->dev, "no property gpio for child of allocated-gpio\n");
 			continue;
 		}
 		status = gpio_request(gpio, child->name);
-		if(status)
+		if (status)
 		{
 			dev_info(&pdev->dev, "Unable to request GPIO: %d(%s)", gpio, child->name);
 			continue;
