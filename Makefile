@@ -22,7 +22,7 @@ all: $(KERNEL_VERSIONS)
 
 clean_all:
 	$(foreach dir,$(drivers),$(MAKE) -C $(dir) clean;)
-	rm -r build
+	rm -fr build
 
 #for KDIR
 include drivers.mk
