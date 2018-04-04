@@ -13,12 +13,12 @@ all: $(KERNEL_VERSIONS)
 	$(foreach dir,$(drivers),$(MAKE) -C $(dir) all;)
 	mkdir -p build/udev/
 	cp */*rules build/udev/
-	mkdir -p build/$@/usr/lib/modules/$(KREL)/kernel/imsar
+	mkdir -p build/$@/usr/lib/modules/$(KREL)/kernel/drivers/imsar
 	rsync -a $(KDIR)/arch/arm/boot/uImage build/$@/
 	rsync -a $(KDIR)/usr/lib/modules/$(KREL)/kernel build/$@/usr/lib/modules/$(KREL)/
 	rsync -a $(KDIR)/usr/lib/modules/$(KREL)/modules.order build/$@/usr/lib/modules/$(KREL)/
 	rsync -a $(KDIR)/usr/lib/modules/$(KREL)/modules.builtin build/$@/usr/lib/modules/$(KREL)/
-	$(foreach dir,$(drivers),mv $(dir)/*.ko build/$@/usr/lib/modules/$(KREL)/kernel/imsar;)
+	$(foreach dir,$(drivers),mv $(dir)/*.ko build/$@/usr/lib/modules/$(KREL)/kernel/drivers/imsar;)
 
 clean_all:
 	$(foreach dir,$(drivers),$(MAKE) -C $(dir) clean;)
