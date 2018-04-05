@@ -94,7 +94,7 @@ static void intc_reg_clear(unsigned short addr, unsigned short mask)
 
 static int intc_enable(int intc_line, int enable)
 {
-	if(enable)
+	if (enable)
 		intc_reg_set(INTC_EN_OFFSET, 1 << intc_line);
 	else
 		intc_reg_clear(INTC_EN_OFFSET, 1 << intc_line);
@@ -104,11 +104,11 @@ static int intc_enable(int intc_line, int enable)
 
 static void intc_addr_data_free(intc_file_t* file_data)
 {
-	if(file_data->addr) {
+	if (file_data->addr) {
 		kfree(file_data->addr);
 		file_data->addr = NULL;
 	}
-	if(file_data->data) {
+	if (file_data->data) {
 		kfree(file_data->data);
 		file_data->data = NULL;
 	}
@@ -119,12 +119,12 @@ static int intc_kmalloc(intc_file_t* file_data, int bytes)
 {
 	int k;
 
-	if(!(file_data->addr = (unsigned short *)kmalloc(bytes, GFP_KERNEL))) {
+	if (!(file_data->addr = (unsigned short *)kmalloc(bytes, GFP_KERNEL))) {
 		printk(KERN_ERR "<%s> kmalloc failed\n", DEVICE_NAME);
 		return -ENOMEM;
 	}
 
-	if(!(file_data->data = (unsigned short *)kmalloc(bytes, GFP_KERNEL))) {
+	if (!(file_data->data = (unsigned short *)kmalloc(bytes, GFP_KERNEL))) {
 		printk(KERN_ERR "<%s> kmalloc failed\n", DEVICE_NAME);
 		kfree(file_data->addr);
 		file_data->addr = NULL;
@@ -132,7 +132,7 @@ static int intc_kmalloc(intc_file_t* file_data, int bytes)
 	}
 
 	// initialize data
-	for(k = 0; k < bytes; k++)
+	for (k = 0; k < bytes; k++)
 		file_data->data[k] = INTC_DATA_INVALID;
 
 	file_data->rcnt = bytes / sizeof(unsigned short);
@@ -151,15 +151,15 @@ static ssize_t intc_write(struct file *f, const char __user *buf, size_t bytes, 
 	// free if necessary
 	intc_addr_data_free(file_data);
 
-	if(intc_kmalloc(file_data, bytes) < 0)
+	if (intc_kmalloc(file_data, bytes) < 0)
 		return -ENOMEM;
 
-	if(copy_from_user((void *)file_data->addr, (const void __user *)buf, bytes)) {
+	if (copy_from_user((void *)file_data->addr, (const void __user *)buf, bytes)) {
 		intc_addr_data_free(file_data);
 		return -EFAULT;
 	}
 	// mask addresses
-	for(kk = 0; kk < bytes / sizeof(unsigned short); kk++)
+	for (kk = 0; kk < bytes / sizeof(unsigned short); kk++)
 		file_data->addr[kk] &= INTC_ADDR_MASK;
 
 	return bytes;
@@ -176,8 +176,8 @@ static ssize_t intc_read(struct file *f, char __user * buf, size_t bytes, loff_t
 
 	printk(KERN_DEBUG "<%s> file: read()  %d\n", DEVICE_NAME, ii);
 
-	if(f->f_flags & O_NONBLOCK) {
-		if(!fid[ii].valid)
+	if (f->f_flags & O_NONBLOCK) {
+		if (!fid[ii].valid)
 			return -EAGAIN;
 	} else {
 		int ret = file_data->timeout;
@@ -185,24 +185,24 @@ static ssize_t intc_read(struct file *f, char __user * buf, size_t bytes, loff_t
 		// wake me up once interrupt received
 		status = wait_event_interruptible_timeout(fid[ii].wq, (fid[ii].count != current_count), ret);
 
-		if(status == 0) // timeout
+		if (status == 0) // timeout
 			return -ETIME;
-		else if(status < 0)
+		else if (status < 0)
 			return status;
 	}
 
 	// read registers
-	for(kk = 0; kk < file_data->rcnt; kk++)
+	for (kk = 0; kk < file_data->rcnt; kk++)
 		file_data->data[kk] = fpga_reg_read(file_data->addr[kk])
 	;
 
 	// copy data if any
-	if(!buf || !file_data->rcnt) {
+	if (!buf || !file_data->rcnt) {
 		bytes = 0;
 	} else {
-		if(bytes > file_data->rcnt * sizeof(unsigned short))
+		if (bytes > file_data->rcnt * sizeof(unsigned short))
 			bytes = file_data->rcnt * sizeof(unsigned short);
-		if(copy_to_user((unsigned int *)buf, file_data->data, bytes)) {
+		if (copy_to_user((unsigned int *)buf, file_data->data, bytes)) {
 			printk(KERN_ERR "<%s> file: read()  %d EFAULT\n", DEVICE_NAME, ii);
 			return -EFAULT;
 		}
@@ -226,8 +226,8 @@ static irqreturn_t intc_isr(int num, void *dev_id)
 	intc_reg_read(pending, INTC_PEND_OFFSET); // determine pending IRQ
 
 	// address FPGA IRQ interrupts, right to left
-	for(ii = 0; ii < INTC_IRQ_COUNT; ii++) {
-		if((pending & (1 << ii)) == 0)
+	for (ii = 0; ii < INTC_IRQ_COUNT; ii++) {
+		if ((pending & (1 << ii)) == 0)
 			continue;
 		fid[ii].count++;
 		// wake up read()
@@ -246,15 +246,15 @@ static long intc_irq_init(int num)
 {
 	int ii;
 
-	if(irqnum)
+	if (irqnum)
 		free_irq(irqnum, NULL); // free previously requested IRQ
 
 	irqnum = num;
-	for(ii = 0; ii < INTC_IRQ_COUNT; ii++) {
+	for (ii = 0; ii < INTC_IRQ_COUNT; ii++) {
 		fid[ii].valid = false;
 	}
 
-	if(request_irq(irqnum, intc_isr, 0, DEVICE_NAME, NULL)) {
+	if (request_irq(irqnum, intc_isr, 0, DEVICE_NAME, NULL)) {
 		printk(KERN_ERR "<%s> unable to register IRQ %d\n", DEVICE_NAME, irqnum);
 		irqnum = 0;
 		return -EIO;
@@ -285,7 +285,7 @@ static long intc_ioctl(struct file *f, unsigned int request, unsigned long arg)
 	}
 	case INTC_ENABLE: {
 		int enable;
-		if(copy_from_user((void *)&enable, (const void __user *)arg, sizeof(int)))
+		if (copy_from_user((void *)&enable, (const void __user *)arg, sizeof(int)))
 			return -EFAULT;
 
 		printk(KERN_INFO "<%s> file: ioctl() %d, enable:%d\n", DEVICE_NAME, ii, enable);
@@ -294,7 +294,7 @@ static long intc_ioctl(struct file *f, unsigned int request, unsigned long arg)
 	}
 	case INTC_TIMEOUT: {
 		int milliseconds;
-		if(copy_from_user((void *)&milliseconds, (const void __user *)arg, sizeof(int)))
+		if (copy_from_user((void *)&milliseconds, (const void __user *)arg, sizeof(int)))
 			return -EFAULT;
 
 		printk(KERN_INFO "<%s> file: ioctl() %d, timeout:%d\n", DEVICE_NAME, ii, milliseconds);
@@ -307,7 +307,7 @@ static long intc_ioctl(struct file *f, unsigned int request, unsigned long arg)
 		break;
 	}
 
-	if(copy_to_user((unsigned int*)arg, &ret, sizeof(int)))
+	if (copy_to_user((unsigned int*)arg, &ret, sizeof(int)))
 		return -EFAULT;
 
 	return 0;
@@ -318,7 +318,7 @@ static int intc_open(struct inode *inode, struct file *f)
 	intc_file_t* file_data;
 	int ii = iminor(f->f_inode);
 
-	if(!(file_data = (intc_file_t *)kzalloc(sizeof(intc_file_t), GFP_KERNEL))) {
+	if (!(file_data = (intc_file_t *)kzalloc(sizeof(intc_file_t), GFP_KERNEL))) {
 		printk(KERN_ERR "<%s> kmalloc failed\n", DEVICE_NAME);
 		return -ENOMEM;
 	}
@@ -350,7 +350,7 @@ static struct file_operations fops = {.owner = THIS_MODULE, .open = intc_open, .
 
 ssize_t intc_name_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	if(fid[MINOR(dev->devt)].name)
+	if (fid[MINOR(dev->devt)].name)
 		return snprintf(buf, PAGE_SIZE, "%s\n", fid[MINOR(dev->devt)].name);
 	else
 		return 0;
@@ -373,7 +373,7 @@ ssize_t intc_timeout_store(struct device *dev, struct device_attribute *attr, co
 	char *end;
 	s32 timeout;
 	unsigned long new = simple_strtoul(buf, &end, 0);
-	if(end == buf)
+	if (end == buf)
 		return -EINVAL;
 
 	timeout = (new * HZ) / 1000;
@@ -387,7 +387,7 @@ ssize_t intc_enable_show(struct device *dev, struct device_attribute *attr, char
 	int enabled = 0;
 	unsigned short res;
 	intc_reg_read(res, INTC_EN_OFFSET) & (1 << MINOR(dev->devt));
-	if(res)
+	if (res)
 		enabled = 1;
 	return snprintf(buf, PAGE_SIZE, "%d\n", enabled);
 }
@@ -396,7 +396,7 @@ ssize_t intc_enable_store(struct device *dev, struct device_attribute *attr, con
 {
 	char *end;
 	unsigned long enable = simple_strtoul(buf, &end, 0);
-	if(end == buf || (enable != 1 && enable != 0))
+	if (end == buf || (enable != 1 && enable != 0))
 		return -EINVAL;
 
 	intc_enable(MINOR(dev->devt), enable);
@@ -434,11 +434,11 @@ static const struct attribute_group *attr_groups[] = {&attr_group, NULL, };
 static int intc_chrdev_init(void)
 {
 	int ii;
-	if(alloc_chrdev_region(&dev, 0, INTC_IRQ_COUNT, DEVICE_NAME) < 0) {
+	if (alloc_chrdev_region(&dev, 0, INTC_IRQ_COUNT, DEVICE_NAME) < 0) {
 		printk(KERN_ERR "<%s> init: alloc_chrdev_region failed\n", DEVICE_NAME);
 		return -1;
 	}
-	if((cl = class_create(THIS_MODULE, DEVICE_NAME)) == NULL) {
+	if ((cl = class_create(THIS_MODULE, DEVICE_NAME)) == NULL) {
 		printk(KERN_ERR "<%s> init: class_create failed\n", DEVICE_NAME);
 		unregister_chrdev_region(dev, INTC_IRQ_COUNT);
 		return -1;
@@ -446,8 +446,8 @@ static int intc_chrdev_init(void)
 
 	cl->dev_groups = attr_groups;
 
-	for(ii = 0; ii < INTC_IRQ_COUNT; ii++) {
-		if(device_create(cl, NULL, MKDEV(MAJOR(dev), MINOR(dev) + ii), NULL, "intc%d", ii) == NULL) {
+	for (ii = 0; ii < INTC_IRQ_COUNT; ii++) {
+		if (device_create(cl, NULL, MKDEV(MAJOR(dev), MINOR(dev) + ii), NULL, "intc%d", ii) == NULL) {
 			printk(KERN_ERR "<%s> init: device_create failed\n", DEVICE_NAME);
 			class_destroy(cl);
 			unregister_chrdev_region(dev, INTC_IRQ_COUNT);
@@ -456,7 +456,7 @@ static int intc_chrdev_init(void)
 	}
 
 	cdev_init(&cdev, &fops);
-	if(cdev_add(&cdev, dev, INTC_IRQ_COUNT) == -1) {
+	if (cdev_add(&cdev, dev, INTC_IRQ_COUNT) == -1) {
 		printk(KERN_ERR "<%s> init: cdev_add failed\n", DEVICE_NAME);
 		device_destroy(cl, dev);
 		class_destroy(cl);
@@ -472,7 +472,7 @@ static int intc_of_remove(struct platform_device *of_dev)
 
 	iounmap(vbase);
 	cdev_del(&cdev);
-	for(ii = 0; ii < INTC_IRQ_COUNT; ii++) {
+	for (ii = 0; ii < INTC_IRQ_COUNT; ii++) {
 		device_destroy(cl, MKDEV(MAJOR(dev), MINOR(dev) + ii));
 	}
 	class_destroy(cl);
@@ -488,7 +488,7 @@ static int intc_of_remove(struct platform_device *of_dev)
 static int intc_map_vfpga(struct resource *res)
 {
 	vfpga = ioremap_nocache(res->start & 0xffff0000, FPGA_REGS_SIZE);
-	if(!vfpga) {
+	if (!vfpga) {
 		printk(KERN_ERR "<%s> ioremap_nocache failed\n", DEVICE_NAME);
 		return -ENOMEM;
 	}
@@ -505,7 +505,7 @@ static int intc_of_probe(struct platform_device *ofdev)
 	dev_info(&ofdev->dev, "%s version: %s (%s)\n", "IMSAR intc driver", GIT_DESCRIBE, BUILD_DATE);
 
 	res = platform_get_resource(ofdev, IORESOURCE_IRQ, 0);
-	if(!res) {
+	if (!res) {
 		printk(KERN_ERR "<%s> probe: could not get platform IRQ resource\n", DEVICE_NAME);
 		return -1;
 	}
@@ -513,7 +513,7 @@ static int intc_of_probe(struct platform_device *ofdev)
 	irq = res->start;
 	printk(KERN_INFO "<%s> probe: IRQ read from DTS entry as %d\n", DEVICE_NAME, irq);
 	ret = intc_irq_init(irq);
-	if(ret != 0)
+	if (ret != 0)
 		return ret;
 
 	res = platform_get_resource(ofdev, IORESOURCE_MEM, 0);
@@ -523,21 +523,21 @@ static int intc_of_probe(struct platform_device *ofdev)
 #endif
 
 	vbase = of_iomap(ofdev->dev.of_node, 0);
-	if(!vbase) {
+	if (!vbase) {
 		dev_err(&ofdev->dev, "of_iomap failed for resource %pR\n", res);
 		return -ENOMEM;
 	}
 
 	// for register read backs
-	if(intc_map_vfpga(res) != 0)
+	if (intc_map_vfpga(res) != 0)
 		return -ENOMEM;
 
 	spin_lock_init(&ilock);
 
 	// register the character device
-	if((ret = intc_chrdev_init()) != 0)
+	if ((ret = intc_chrdev_init()) != 0)
 		return ret;
-	for(ii = 0; ii < INTC_IRQ_COUNT; ii++) {
+	for (ii = 0; ii < INTC_IRQ_COUNT; ii++) {
 		// initialize interrupts
 		fid[ii].valid = false;
 		fid[ii].name = NULL;
@@ -554,7 +554,7 @@ static int intc_of_probe(struct platform_device *ofdev)
 		s32 milliseconds;
 
 		ret = of_property_read_u32(child, "reg", &index);
-		if(ret < 0) {
+		if (ret < 0) {
 			dev_info(&ofdev->dev, "no property reg for child of FPGA interrupt controller\n");
 		} else {
 			fid[index].name = child->name;
@@ -562,7 +562,7 @@ static int intc_of_probe(struct platform_device *ofdev)
 		}
 
 		ret = of_property_read_u32(child, "timeout_ms", &milliseconds);
-		if(ret < 0) {
+		if (ret < 0) {
 			dev_info(&ofdev->dev, "no property timeout for child of FPGA interrupt controller\n");
 		} else {
 			printk(KERN_INFO "interrupt #%d timeout = %d\n", index, milliseconds);
@@ -578,11 +578,21 @@ static int intc_of_probe(struct platform_device *ofdev)
 	return 0;
 }
 
-static const struct of_device_id intc_of_match[] = {{.compatible = "imsar,intc", }, { /* end of list */}, };
+static const struct of_device_id intc_of_match[] = {
+		{.compatible = "imsar,intc", },
+		{ /* end of list */},
+};
 MODULE_DEVICE_TABLE(of, intc_of_match);
 
-static struct platform_driver intc_of_driver = {.probe = intc_of_probe, .remove = intc_of_remove, .driver = {.name =
-		DEVICE_NAME, .owner = THIS_MODULE, .of_match_table = intc_of_match, }, };
+static struct platform_driver intc_of_driver = {
+		.probe = intc_of_probe,
+		.remove = intc_of_remove,
+		.driver = {
+				.name = DEVICE_NAME,
+				.owner = THIS_MODULE,
+				.of_match_table = intc_of_match,
+		},
+};
 module_platform_driver(intc_of_driver);
 
 MODULE_LICENSE("GPL");

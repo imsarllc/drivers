@@ -227,16 +227,16 @@ spidev_write(struct file *filp, const char __user *buf,
 
 int alloc_buffers(struct sarspi_data* spidev)
 {
-	if(!spidev->tx_buffer) {
+	if (!spidev->tx_buffer) {
 		spidev->tx_buffer = kmalloc(bufsiz, GFP_KERNEL);
-		if(!spidev->tx_buffer) {
+		if (!spidev->tx_buffer) {
 			dev_dbg(&spidev->spi->dev, "open/ENOMEM\n");
 			return -ENOMEM;
 		}
 	}
-	if(!spidev->rx_buffer) {
+	if (!spidev->rx_buffer) {
 		spidev->rx_buffer = kmalloc(bufsiz, GFP_KERNEL);
-		if(!spidev->rx_buffer) {
+		if (!spidev->rx_buffer) {
 			dev_dbg(&spidev->spi->dev, "open/ENOMEM\n");
 			kfree(spidev->tx_buffer);
 			spidev->tx_buffer = NULL;
@@ -402,7 +402,7 @@ static ssize_t spidev_reg_show(struct device *dev, struct device_attribute *attr
 	struct spi_device *spi = to_spi_device(dev);
 	struct sarspi_data *spidev = spi_get_drvdata(spi);
 
-	if(kstrtouint(attr->attr.name, 16, &addr))
+	if (kstrtouint(attr->attr.name, 16, &addr))
 	{
 		printk(KERN_ERR "Unable to parse Address.  Bad attribute name: 0x%s\n", attr->attr.name);
 		return 0;
@@ -419,13 +419,13 @@ static ssize_t spidev_reg_store(struct device *dev, struct device_attribute *att
 	struct spi_device *spi = to_spi_device(dev);
 	struct sarspi_data *spidev = spi_get_drvdata(spi);
 
-	if(kstrtouint(attr->attr.name, 16, &addr))
+	if (kstrtouint(attr->attr.name, 16, &addr))
 	{
 		printk(KERN_ERR "Unable to parse Address.  Bad attribute name: 0x%s\n", attr->attr.name);
 		return count;
 	}
 
-	if(kstrtouint(buf, 0, &val))
+	if (kstrtouint(buf, 0, &val))
 	{
 		printk(KERN_ERR "Unable to parse int from value: %s\n", buf);
 		return count;
@@ -440,7 +440,7 @@ static ssize_t spidev_name_show(struct device *dev, struct device_attribute *att
 {
 	struct spi_device *spi = to_spi_device(dev);
 	struct sarspi_data *spidev = spi_get_drvdata(spi);
-	if(dev)
+	if (dev)
 		return snprintf(buf, PAGE_SIZE, "%s\n", spidev->name);
 	else
 		return 0;
@@ -614,14 +614,14 @@ static void create_reg_attrs(struct sarspi_data *spidev)
 	else
 		spidev->regmap = devm_regmap_init_spi(spidev->spi, spidev->regcfg);
 
-	if(!spidev->regmap)
+	if (!spidev->regmap)
 	{
 		printk(KERN_ERR "Unable to init regmap\n");
 		return;
 	}
 
-	for(ii = 0; ii <= spidev->regcfg->max_register; ii++) {
-		if(regmap_exists(spidev->regcfg, ii))
+	for (ii = 0; ii <= spidev->regcfg->max_register; ii++) {
+		if (regmap_exists(spidev->regcfg, ii))
 			regs++;
 	}
 	spidev->reg_attrs = regs;
@@ -629,33 +629,33 @@ static void create_reg_attrs(struct sarspi_data *spidev)
 
 	attr_size = regs * sizeof(struct device_attribute);
 	spidev->attr_array = (struct device_attribute*)kzalloc(attr_size, GFP_KERNEL);
-	if(PTR_ERR_OR_ZERO(spidev->attr_array))
+	if (PTR_ERR_OR_ZERO(spidev->attr_array))
 	{
 		goto array_error;
 	}
 
 	attr_list_size = (regs + 1) * sizeof(struct attribute*);
 	spidev->attr_list = (struct attribute**)kzalloc(attr_size, GFP_KERNEL);
-	if(PTR_ERR_OR_ZERO(spidev->attr_list))
+	if (PTR_ERR_OR_ZERO(spidev->attr_list))
 	{
 		goto list_error;
 	}
 
-	spidev->reg_attr_group = (struct attribute_group*) kzalloc(sizeof(struct attribute_group*),GFP_KERNEL);
-	if(PTR_ERR_OR_ZERO(spidev->attr_list))
+	spidev->reg_attr_group = (struct attribute_group*) kzalloc(sizeof(struct attribute_group),GFP_KERNEL);
+	if (PTR_ERR_OR_ZERO(spidev->reg_attr_group))
 	{
 		goto group_error;
 	}
 
 	regs = 0;
-	for(ii = 0; ii <= spidev->regcfg->max_register; ii++)
+	for (ii = 0; ii <= spidev->regcfg->max_register; ii++)
 	{
 		mode_t mode = 0;
 		if (regmap_readable(spidev->regcfg, ii))
 			mode |= S_IRUGO;
 		if (regmap_writeable(spidev->regcfg, ii))
 			mode |= S_IWUGO;
-		if(mode)
+		if (mode)
 		{
 			sysfs_attr_init(attrs[regs]);
 			sprintf(name_map[ii], "%02x", ii);
