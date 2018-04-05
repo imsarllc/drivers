@@ -13,6 +13,8 @@
 #include <linux/sysfs.h>
 #include <linux/device.h>
 #include <linux/of_device.h>
+#include <linux/err.h>
+#include <linux/module.h>
 
 #define DEVICE_NAME "allocated-gpio"
 
