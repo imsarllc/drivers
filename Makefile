@@ -14,8 +14,8 @@ drivers: $(KERNEL_VERSIONS)
 201%:
 	./version.sh
 	$(foreach dir,$(drivers),$(MAKE) -C $(dir) all;)
-	mkdir -p build/udev/
-	cp */*rules build/udev/
+	mkdir -p build/rules.d
+	cp */*rules build/rules.d
 	mkdir -p build/$@/$(MDST)/$(KREL)/kernel/drivers/imsar
 	rsync -a $(KDIR)/arch/arm/boot/uImage build/$@/
 	rsync -a $(KDIR)/usr/lib/modules/$(KREL)/kernel          build/$@/$(MDST)/$(KREL)/
