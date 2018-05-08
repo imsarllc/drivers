@@ -31,8 +31,11 @@ rsync -a $KDIR/usr/lib/modules/$KREL/modules.builtin build/$VIVADO/$MDST/$KREL/
 
 depmod -a -b build/$VIVADO $KREL
 
-if [ $VIVADO == '2016.4' ]; then
-  sed -i "s/VERSION=.*/VERSION=$KREL/" post_install.sh
+sed -i "s/VERSION=.*/VERSION=$KREL/" post_install.sh
+
+if [ $VIVADO == '2013.4' ]; then
+  cp post_install.sh build/$VIVADO/usr/lib/modules/
+  tar -czf kernel_modules_$KREL.tgz -C build/$VIVADO/usr/lib/modules/ .
+else
   fpm --post-install post_install.sh  --output-type deb --name grizzly_kernel --prefix lib/modules -C build/$VIVADO/lib/modules --architecture armhf --version 4.6 --iteration $BUILD_NUMBER --force  --input-type dir .
 fi
-
