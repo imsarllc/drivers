@@ -29,7 +29,9 @@ rsync -a $KDIR/usr/lib/modules/$KREL/kernel          build/$VIVADO/$MDST/$KREL/
 rsync -a $KDIR/usr/lib/modules/$KREL/modules.order   build/$VIVADO/$MDST/$KREL/
 rsync -a $KDIR/usr/lib/modules/$KREL/modules.builtin build/$VIVADO/$MDST/$KREL/
 
-depmod -a -b build/$VIVADO $KREL
+if [ $VIVADO != '2013.4' ]; then
+  depmod -a -b build/$VIVADO $KREL
+fi
 
 sed -i "s/VERSION=.*/VERSION=$KREL/" post_install.sh
 
