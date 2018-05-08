@@ -9,7 +9,8 @@ drivers: $(KERNEL_VERSIONS)
 2013.4: MDST=usr/lib/modules
 2016.4: MDST=lib/modules
 
-201%:	export KREL=$(shell cat $(KDIR)/include/config/kernel.release)
+201%: export KVER=$@
+201%: export KREL=$(shell cat $(KDIR)/include/config/kernel.release)
 201%:
 	./version.sh
 	$(foreach dir,$(drivers),$(MAKE) -C $(dir) all;)
@@ -17,7 +18,7 @@ drivers: $(KERNEL_VERSIONS)
 
 clean_all:
 	$(foreach dir,$(drivers),$(MAKE) -C $(dir) clean;)
-	rm -fr build
+	rm -fr build *.tgz *.deb
 
 #for KDIR
 include drivers.mk
