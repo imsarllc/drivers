@@ -33,7 +33,7 @@ if [ $VIVADO != '2013.4' ]; then
   /sbin/depmod -a -b build/$VIVADO $KREL
 fi
 
-sed -i "s/VERSION=.*/VERSION=$KREL/" post_install.sh
+sed "s/VERSION=.*/VERSION=$KREL/" post_install_template.sh > post_install.sh
 
 if [ $VIVADO == '2013.4' ]; then
   mkdir -p build/drivers/2013.4
