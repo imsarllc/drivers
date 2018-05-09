@@ -20,8 +20,8 @@ BUILD_NUMBER=${BUILD_NUMBER:-0}
 mkdir -p    build/$VIVADO/etc/udev/rules.d/
 cp */*rules build/$VIVADO/etc/udev/rules.d/
 
-mkdir -p               build/$VIVADO/$MDST/$KREL/kernel/drivers/imsar
 DRIVERS="$(find -maxdepth 2 -name '*.ko')"
+mkdir -p    build/$VIVADO/$MDST/$KREL/kernel/drivers/imsar
 cp $DRIVERS build/$VIVADO/$MDST/$KREL/kernel/drivers/imsar
 
 rsync -a $KDIR/arch/arm/boot/uImage                  build/$VIVADO/$MDST/$KREL/
@@ -48,5 +48,5 @@ if [ $VIVADO == '2013.4' ]; then
   cp post_install.sh $VIVADO/usr/lib/modules/
   tar -czf kernel_modules_$KREL.tgz -C $VIVADO/ .
 else
-  fpm --post-install post_install.sh  --output-type deb --name grizzly_kernel --prefix lib/modules -C $VIVADO/lib/modules --architecture armhf --version 4.6 --iteration $BUILD_NUMBER --force  --input-type dir .
+  fpm --post-install post_install.sh  --output-type deb --name grizzly_kernel -C $VIVADO --architecture armhf --version 4.6 --iteration $BUILD_NUMBER --force  --input-type dir .
 fi
