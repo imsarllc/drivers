@@ -10,18 +10,11 @@ drivers: $(KERNEL_VERSIONS)
 2016.4: MDST=lib/modules
 
 201%: export KVER=$@
-201%:	export KREL=$(shell cat $(KDIR)/include/config/kernel.release)
+201%: export KREL=$(shell cat $(KDIR)/include/config/kernel.release)
 201%:
 	./version.sh
 	$(foreach dir,$(drivers),$(MAKE) -C $(dir) all;)
-	mkdir -p build/rules.d
-	cp */*rules build/rules.d
-	mkdir -p build/$@/$(MDST)/$(KREL)/kernel/drivers/imsar
-	rsync -a $(KDIR)/arch/arm/boot/uImage build/$@/
-	rsync -a $(KDIR)/usr/lib/modules/$(KREL)/kernel          build/$@/$(MDST)/$(KREL)/
-	rsync -a $(KDIR)/usr/lib/modules/$(KREL)/modules.order   build/$@/$(MDST)/$(KREL)/
-	rsync -a $(KDIR)/usr/lib/modules/$(KREL)/modules.builtin build/$@/$(MDST)/$(KREL)/
-	mv $(foreach dir,$(drivers), $(dir)/*.ko)                build/$@/$(MDST)/$(KREL)/kernel/drivers/imsar
+	VIVADO=$@ KDIR=$(KDIR) ./curate_artifacts.sh
 
 clean_all:
 	$(foreach dir,$(drivers),$(MAKE) -C $(dir) clean;)

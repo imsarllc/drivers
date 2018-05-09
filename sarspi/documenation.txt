@@ -1,0 +1,22 @@
+The driver is heavily based on spidev.  However, instead of requiring
+ioctls for full-duplex transfers, It sends the bytes in the provided
+read buffer.  This could have reprocussions if, for instance, you are
+reusing a buffer or the device does something funny when it receives
+all zeros.  However, this is usually safe because you usually need to
+send the address to read from the SPI device.
+
+
+Here is some example C code of how you might read a 16-bit value and
+the 16-bit address of 0xbeef:
+
+uint16_t spi_read()
+{
+  uint8_t buf[4];
+  buf[0] = 0xbe;
+  buf[1] = 0xef;
+  read(spi_fd, buf, 4);
+  return (buf[3] << 8 | buf[4]);
+}
+
+This driver also requires that you update the device tree if there are
+any non-default SPI settings, because there are no ioctls.
