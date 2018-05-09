@@ -1,5 +1,7 @@
 *.ko
 *.o*
 *.mod.*
+build
+version.h
 Module.symvers 
 modules.order
