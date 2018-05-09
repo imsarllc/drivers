@@ -18,7 +18,7 @@ drivers: $(KERNEL_VERSIONS)
 
 clean_all:
 	$(foreach dir,$(drivers),$(MAKE) -C $(dir) clean;)
-	rm -fr build *.tgz *.deb
+	rm -fr build
 
 #for KDIR
 include drivers.mk
