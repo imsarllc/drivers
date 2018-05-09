@@ -1,9 +1,9 @@
 The driver is heavily based on spidev.  However, instead of requiring
 ioctls for full-duplex transfers, It sends the bytes in the provided
 read buffer.  This could have reprocussions if, for instance, you are
-reusing a buffer or the device does something funny when it recieves
+reusing a buffer or the device does something funny when it receives
 all zeros.  However, this is usually safe because you usually need to
-send the address to read to the SPI device.
+send the address to read from the SPI device.
 
 
 Here is some example C code of how you might read a 16-bit value and
