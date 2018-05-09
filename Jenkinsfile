@@ -13,7 +13,12 @@ node('watson')
   }
   stage('Build 2016.4')
   {
-    sh('make 2016.4')
+    sh('''\
+      #!/bin/bash
+      source /etc/profile.d/rvm.sh; 
+      type rvm | head -n 1; 
+      rvm use
+      make 2016.4'''.stripIndent())
   }
   stage('Archive')
   {
