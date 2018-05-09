@@ -36,10 +36,15 @@ fi
 sed -i "s/VERSION=.*/VERSION=$KREL/" post_install.sh
 
 if [ $VIVADO == '2013.4' ]; then
-  cp post_install.sh build/$VIVADO/usr/lib/modules/
-  tar -czf kernel_modules_$KREL.tgz -C build/$VIVADO/usr/lib/modules/ .
-  cat installer.sh kernel_modules_$KREL.tgz > armhf_drivers_installer.sh
+  mkdir -p build/drivers/2013.4
+  cp $DRIVERS build/drivers/2013.4
+  cp */*rules build/drivers
+  tar -czf armhf_drivers.tgz -C build/drivers .
+  cat installer.sh armhf_drivers.tgz > armhf_drivers_installer.sh
   chmod +x armhf_drivers_installer.sh
+
+  cp post_install.sh build/$VIVADO/usr/lib/modules/
+  tar -czf kernel_modules_$KREL.tgz -C build/$VIVADO/ .
 else
   fpm --post-install post_install.sh  --output-type deb --name grizzly_kernel --prefix lib/modules -C build/$VIVADO/lib/modules --architecture armhf --version 4.6 --iteration $BUILD_NUMBER --force  --input-type dir .
 fi
