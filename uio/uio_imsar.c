@@ -85,7 +85,7 @@ static int mmdev_probe(struct platform_device *pdev)
 	int irq;
 	int ret;
 
-	dev_info(&pdev->dev, "%s version: %s (%s)\n", "IMSAR intc driver", GIT_DESCRIBE, BUILD_DATE);
+	dev_info(&pdev->dev, "%s version: %s (%s)\n", "IMSAR uio driver", GIT_DESCRIBE, BUILD_DATE);
 
 	mmdev = devm_kzalloc(&pdev->dev, (sizeof(struct mmdev_dev)), GFP_KERNEL);
 	if(!mmdev)
