@@ -1,3 +1,3 @@
 # This file should be placed in /etc/udev/rules.d/
 KERNEL=="intc*", SYMLINK+="intc/%n", MODE="0666"
-#KERNEL=="intc*", SYMLINK+="intc/%s{name}", MODE="0666"
+KERNEL=="intc*", SYMLINK+="intc/%s{name}", MODE="0666"
