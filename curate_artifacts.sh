@@ -48,5 +48,7 @@ if [ $VIVADO == '2013.4' ]; then
   cp post_install.sh $VIVADO/usr/lib/modules/
   tar -czf kernel_modules_$KREL.tgz -C $VIVADO/ .
 else
+  mkdir -p $VIVADO/etc/modules-load.d/
+  echo sarspi > $VIVADO/etc/modules-load.d/sarspi.conf
   fpm --post-install post_install.sh  --output-type deb --name grizzly_kernel -C $VIVADO --architecture armhf --version 4.6 --iteration $BUILD_NUMBER --force  --input-type dir .
 fi
