@@ -335,8 +335,8 @@ static int intc_close(struct inode *inode, struct file *f)
 {
 	int ii = iminor(f->f_inode);
 
-	intc_enable(ii, 0);
-	open_files--;
+  if (--open_files == 0)
+    intc_enable(ii, 0);
 	intc_addr_data_free((intc_file_t*)f->private_data);
 	kfree(f->private_data);
 
