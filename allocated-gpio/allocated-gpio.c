@@ -184,7 +184,7 @@ static int allocated_gpio_probe(struct platform_device *pdev)
 {
 	printk(KERN_ERR "Probing power gpio\n");
 
-	dev_info(&pdev->dev, "%s version: %s (%s)\n", "IMSAR intc driver", GIT_DESCRIBE, BUILD_DATE);
+	dev_info(&pdev->dev, "%s version: %s (%s)\n", "IMSAR gpio driver", GIT_DESCRIBE, BUILD_DATE);
 
 	create_pin_attrs(pdev);
 
