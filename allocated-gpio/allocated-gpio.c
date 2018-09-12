@@ -130,16 +130,28 @@ static void create_pin_attrs(struct platform_device *pdev)
 			continue;
 		}
 		printk(KERN_INFO "GPIO #%d = %s\n", gpio, child->name);
+		data->attr_array[num_attrs].gpio = gpio;
+
 		data->attr_array[num_attrs].n.attr.name = child->name;
 		data->attr_array[num_attrs].n.attr.mode = S_IRUGO;
 		data->attr_array[num_attrs].n.show = gpio_state_show;
-		//TODO: check dt param for input/output
-		if (1)
+
+		if (of_property_read_bool(child, "output-low"))
+		{
+			printk(KERN_INFO "Setting GPIO low\n");
+			gpio_direction_output(data->attr_array[num_attrs].gpio, 0);
+		}
+		else if (of_property_read_bool(child, "output-high"))
+		{
+			printk(KERN_INFO "Setting GPIO high\n");
+			gpio_direction_output(data->attr_array[num_attrs].gpio, 1);
+		}
+
+		if (! of_property_read_bool(child, "input") )
 		{
 			data->attr_array[num_attrs].n.store = gpio_state_store;
 			data->attr_array[num_attrs].n.attr.mode = S_IWUGO | S_IRUGO;
 		}
-		data->attr_array[num_attrs].gpio = gpio;
 		data->attr_list[num_attrs] = &data->attr_array[num_attrs].n.attr;
 		num_attrs++;
 	}

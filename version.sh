@@ -7,7 +7,7 @@ cat <<EOF > ${FILE}
 #ifndef _VERSION_H_
 #define _VERSION_H_
 
-#define GIT_DESCRIBE  "${GIT_DESCRIBE}"
+#define GIT_DESCRIBE  "${GIT_DESCRIBE}-b${BUILD_NUMBER}"
 #define BUILD_DATE    "${BUILD_DATE}"
 #endif //_VERSION_H_
 EOF
