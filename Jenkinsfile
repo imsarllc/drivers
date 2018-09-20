@@ -1,5 +1,3 @@
-
-
 node('watson')
 {
   stage('Checkout')
@@ -23,5 +21,19 @@ node('watson')
   stage('Archive')
   {
     archiveArtifacts artifacts: 'build/**', fingerprint: true
+  }
+  stage('Upload')
+  {
+    def server = Artifactory.server 'artifactory'
+    def uploadSpec = """{
+      "files": [
+        {
+          "pattern": "*.deb",
+          "target": "fpga-deb-nightly/pool/",
+          "props": "deb.distribution=xenial;deb.component=contrib;deb.architecture=armhf"
+        }
+      ]
+    }"""
+    server.upload(uploadSpec)
   }
 }
