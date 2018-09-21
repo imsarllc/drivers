@@ -51,6 +51,20 @@ else
   mkdir -p $VIVADO/etc/modules-load.d/
   echo sarspi > $VIVADO/etc/modules-load.d/sarspi.conf
   VERSION=4.6
-  fpm --post-install post_install.sh  --output-type deb --name grizzly-kernel -C $VIVADO --architecture armhf --version $VERSION --iteration $BUILD_NUMBER --force  --input-type dir .
+  fpm --post-install post_install.sh  \
+    --output-type deb \
+    --description 'Linux kernel and modules for a Zynq based Nanosar C system' \
+    --license 'GPL' \
+    -m 'Imsar FPGA Team <fpga@imsar.com>' \
+    --vendor 'IMSAR LLC' \
+    --url 'https://www.imsar.com/' \
+    --name grizzly-kernel \
+    -C $VIVADO \
+    --architecture armhf \
+    --version $VERSION \
+    --iteration $BUILD_NUMBER \
+    --force  \
+    --input-type dir .
+
   ln grizzly-kernel_${VERSION}-${BUILD_NUMBER}_armhf.deb grizzly-kernel_${VERSION}-latest_armhf.deb
 fi
