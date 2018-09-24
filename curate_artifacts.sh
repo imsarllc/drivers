@@ -55,7 +55,7 @@ else
     --output-type deb \
     --description 'Linux kernel and modules for a Zynq based Nanosar C system' \
     --license 'GPL' \
-    -m 'Imsar FPGA Team <fpga@imsar.com>' \
+    -m 'IMSAR FPGA Team <fpga@imsar.com>' \
     --vendor 'IMSAR LLC' \
     --url 'https://www.imsar.com/' \
     --name grizzly-kernel \
