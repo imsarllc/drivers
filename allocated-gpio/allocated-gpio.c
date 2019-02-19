@@ -118,18 +118,12 @@ static void create_pin_attrs(struct platform_device *pdev)
 	num_attrs = 0;
 	for_each_child_of_node(np, child)
 	{
-		u32 gpio = of_get_gpio(child, 0);
+		u32 flags = 0;
+		u32 gpio = of_get_gpio_flags(child, 0, flags);
 		if (gpio < 0) {
 			dev_info(&pdev->dev, "no property gpio for child of allocated-gpio\n");
 			continue;
 		}
-		status = gpio_request(gpio, child->name);
-		if (status)
-		{
-			dev_info(&pdev->dev, "Unable to request GPIO: %d(%s)", gpio, child->name);
-			continue;
-		}
-		printk(KERN_INFO "GPIO #%d = %s\n", gpio, child->name);
 		data->attr_array[num_attrs].gpio = gpio;
 
 		data->attr_array[num_attrs].n.attr.name = child->name;
@@ -137,21 +131,29 @@ static void create_pin_attrs(struct platform_device *pdev)
 		data->attr_array[num_attrs].n.show = gpio_state_show;
 
 		if (of_property_read_bool(child, "output-low"))
-		{
-			printk(KERN_INFO "Setting GPIO low\n");
-			gpio_direction_output(data->attr_array[num_attrs].gpio, 0);
-		}
+			flags = GPIOF_OUT_INIT_LOW | GPIOF_EXPORT_DIR_FIXED;
 		else if (of_property_read_bool(child, "output-high"))
-		{
-			printk(KERN_INFO "Setting GPIO high\n");
-			gpio_direction_output(data->attr_array[num_attrs].gpio, 1);
-		}
+			flags = GPIOF_OUT_INIT_HIGH | GPIOF_EXPORT_DIR_FIXED;
+		else if (of_property_read_bool(child, "input"))
+			flags = GPIOF_IN | GPIOF_EXPORT_DIR_FIXED;
+		else
+			flags = GPIOF_IN | GPIOF_EXPORT_DIR_CHANGEABLE;
 
 		if (! of_property_read_bool(child, "input") )
 		{
 			data->attr_array[num_attrs].n.store = gpio_state_store;
 			data->attr_array[num_attrs].n.attr.mode = S_IWUGO | S_IRUGO;
+			data->attr_array[num_attrs].n.attr.mode = (S_IWUSR|S_IWGRP)  | S_IRUGO;
 		}
+
+		printk(KERN_INFO "GPIO #%d = %s(%d)\n", gpio, child->name, flags);
+		status = gpio_request_one(gpio, flags, child->name);
+		if (status)
+		{
+			dev_info(&pdev->dev, "Unable to request GPIO: %d(%s)", gpio, child->name);
+			continue;
+		}
+		gpio_export_link(&pdev->dev, child->name, gpio);
 		data->attr_list[num_attrs] = &data->attr_array[num_attrs].n.attr;
 		num_attrs++;
 	}
@@ -182,7 +184,7 @@ error:
 
 static int allocated_gpio_probe(struct platform_device *pdev)
 {
-	printk(KERN_ERR "Probing power gpio\n");
+	printk(KERN_ERR "Probing allocated gpio\n");
 
 	dev_info(&pdev->dev, "%s version: %s (%s)\n", "IMSAR gpio driver", GIT_DESCRIBE, BUILD_DATE);
 
@@ -215,6 +217,7 @@ static int allocated_gpio_remove(struct platform_device *pdev)
 	{
 		u32 gpio;
 		gpio = of_get_gpio(child, 0);
+		gpio_unexport(gpio);
 		//FIXME: If somebody else requested this GPIO, we will free it for them :(
 		gpio_free(gpio);
 	}
