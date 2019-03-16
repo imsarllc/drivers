@@ -1,8 +1,8 @@
 /*
  * allocated-gpio.c
  *
- *  Created on: Apr 2, 2018
- *      Author: Derrick Gibelyou
+ * Created on: Apr 2, 2018
+ * Author: Derrick Gibelyou
  */
 #include "version.h"
 
@@ -21,7 +21,7 @@
 struct gpio_attribute
 {
 	struct device_attribute n;
-	u32 gpio;
+	s32 gpio;
 };
 
 struct gpio_driver_data
@@ -118,17 +118,23 @@ static void create_pin_attrs(struct platform_device *pdev)
 	num_attrs = 0;
 	for_each_child_of_node(np, child)
 	{
-		u32 flags = 0;
-		u32 gpio = of_get_gpio_flags(child, 0, flags);
-		if (gpio < 0) {
-			dev_info(&pdev->dev, "no property gpio for child of allocated-gpio\n");
-			continue;
-		}
-		data->attr_array[num_attrs].gpio = gpio;
+		enum of_gpio_flags flags = 0;
+		s32 gpio = of_get_gpio_flags(child, 0, &flags);
 
 		data->attr_array[num_attrs].n.attr.name = child->name;
 		data->attr_array[num_attrs].n.attr.mode = S_IRUGO;
 		data->attr_array[num_attrs].n.show = gpio_state_show;
+		data->attr_array[num_attrs].gpio = -1;
+
+		if (gpio < 0)
+		{
+			dev_info(&pdev->dev, "no property gpio for child of allocated-gpio\n");
+			num_attrs++;
+			continue;
+		}
+		printk(KERN_INFO "GPIO #%d = %s(%d)\n", gpio, child->name, flags);
+
+		data->attr_array[num_attrs].gpio = gpio;
 
 		if (of_property_read_bool(child, "output-low"))
 			flags = GPIOF_OUT_INIT_LOW | GPIOF_EXPORT_DIR_FIXED;
@@ -143,7 +149,7 @@ static void create_pin_attrs(struct platform_device *pdev)
 		{
 			data->attr_array[num_attrs].n.store = gpio_state_store;
 			data->attr_array[num_attrs].n.attr.mode = S_IWUGO | S_IRUGO;
-			data->attr_array[num_attrs].n.attr.mode = (S_IWUSR|S_IWGRP)  | S_IRUGO;
+			data->attr_array[num_attrs].n.attr.mode = (S_IWUSR|S_IWGRP) | S_IRUGO;
 		}
 
 		printk(KERN_INFO "GPIO #%d = %s(%d)\n", gpio, child->name, flags);
@@ -203,24 +209,26 @@ static int allocated_gpio_probe(struct platform_device *pdev)
  */
 static int allocated_gpio_remove(struct platform_device *pdev)
 {
+	int ii;
 	struct gpio_driver_data *data = (struct gpio_driver_data*) pdev->dev.platform_data;
-	struct device_node *np = pdev->dev.of_node;
-	struct device_node *child;
+
+	for (ii = 0; ii < data->num_attrs; ii++)
+	{
+		s32 gpio;
+		gpio = data->attr_array[ii].gpio;
+		dev_info(&pdev->dev, "removing GPIO = %s:%d", data->attr_array[ii].n.attr.name, gpio);
+		if (gpio >= 0)
+		{
+				gpio_unexport(gpio);
+				gpio_free(gpio);
+		}
+	}
 
 	sysfs_remove_group(&pdev->dev.kobj, &data->reg_attr_group);
 	if (data->attr_list)
 		kfree(data->attr_list);
 	if (data->attr_array)
 		kfree(data->attr_array);
-
-	for_each_child_of_node(np, child)
-	{
-		u32 gpio;
-		gpio = of_get_gpio(child, 0);
-		gpio_unexport(gpio);
-		//FIXME: If somebody else requested this GPIO, we will free it for them :(
-		gpio_free(gpio);
-	}
 
 	return 0;
 }
