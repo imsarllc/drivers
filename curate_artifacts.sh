@@ -14,7 +14,7 @@ else
   MDST=lib/modules
 fi
 KREL=$(cat $KDIR/include/config/kernel.release)
-
+VERSION=$(cat $KDIR/include/config/kernel.release | grep -o -P '\d\.\d')
 BUILD_NUMBER=${BUILD_NUMBER:-0}
 
 mkdir -p    build/$VIVADO/etc/udev/rules.d/
@@ -50,7 +50,6 @@ if [ $VIVADO == '2013.4' ]; then
 else
   mkdir -p $VIVADO/etc/modules-load.d/
   echo sarspi > $VIVADO/etc/modules-load.d/sarspi.conf
-  VERSION=4.6
   fpm --post-install post_install.sh  \
     --output-type deb \
     --description 'Linux kernel and modules for a Zynq based Nanosar C system' \
