@@ -5,7 +5,7 @@ def promotionConfig = [
     // Optional parameters
 
     // The build name and build number to promote. If not specified, the Jenkins job's build name and build number are used
-    'buildName'          : 'gpl_kernel_drivers'
+    'buildName'          : 'gpl_kernel_drivers',
     'buildNumber'        : env.BUILD_NUMBER,
     // Comment and Status to be displayed in the Build History tab in Artifactory
     'comment'            : 'this is the promotion comment',
@@ -53,7 +53,7 @@ node('watson')
           {
             "pattern": "*.deb",
             "target": "fpga-deb-nightly/pool/",
-            "props": "deb.distribution=xenial;deb.component=contrib;deb.architecture=armhf"
+            "props": "deb.distribution=xenial;deb.distribution=bionic;deb.component=contrib;deb.architecture=armhf"
           }
         ]
       }"""
