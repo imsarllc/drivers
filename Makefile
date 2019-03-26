@@ -1,6 +1,6 @@
 KERNEL_VERSIONS = 2013.4 2016.4
 
-drivers = intc sarspi uio allocated-gpio
+drivers = intc sarspi uio allocated-gpio lcd
 
 default: 2016.4
 
