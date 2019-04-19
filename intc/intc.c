@@ -194,8 +194,7 @@ static ssize_t intc_read(struct file *f, char __user * buf, size_t bytes, loff_t
 
 	// read registers
 	for (kk = 0; kk < file_data->rcnt; kk++)
-		file_data->data[kk] = fpga_reg_read(file_data->addr[kk])
-	;
+		file_data->data[kk] = fpga_reg_read(file_data->addr[kk]);
 
 	// copy data if any
 	if (!buf || !file_data->rcnt) {
@@ -340,8 +339,8 @@ static int intc_close(struct inode *inode, struct file *f)
 {
 	int ii = iminor(f->f_inode);
 
-  if (--open_files == 0)
-    intc_enable(ii, 0);
+	if (--open_files == 0)
+		intc_enable(ii, 0);
 	intc_addr_data_free((intc_file_t*)f->private_data);
 	kfree(f->private_data);
 
