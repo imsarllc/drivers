@@ -50,6 +50,7 @@ if [ $VIVADO == '2013.4' ]; then
 else
   mkdir -p $VIVADO/etc/modules-load.d/
   echo sarspi > $VIVADO/etc/modules-load.d/sarspi.conf
+  echo newhaven_lcd > $VIVADO/etc/modules-load.d/lcd.conf
   fpm --post-install post_install.sh  \
     --output-type deb \
     --description 'Linux kernel and modules for a Zynq based Nanosar C system' \
