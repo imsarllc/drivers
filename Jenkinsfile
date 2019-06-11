@@ -20,7 +20,7 @@ def promotionConfig = [
     'failFast'           : true
 ]
 
-node('merlin')
+node('kernel')
 {
   stage('Checkout')
   {
