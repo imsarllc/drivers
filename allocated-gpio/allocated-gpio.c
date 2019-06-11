@@ -42,7 +42,7 @@ ssize_t gpio_state_show(struct device *dev, struct device_attribute *attr, char 
 		if (attr == &(data->attr_array[ii].n) )
 		{
 			int ret;
-			printk(KERN_DEBUG "Address match for %s\n", data->attr_array[ii].n.attr.name);
+			//printk(KERN_DEBUG "Address match for %s\n", data->attr_array[ii].n.attr.name);
 			ret = gpio_get_value_cansleep(data->attr_array[ii].gpio);
 			return snprintf(buf, PAGE_SIZE, "%d\n", ret);
 		}
@@ -66,7 +66,7 @@ ssize_t gpio_state_store(struct device *dev, struct device_attribute *attr, cons
 	{
 		if (attr == &(data->attr_array[ii].n) )
 		{
-			printk(KERN_DEBUG "Address match for %s\n", data->attr_array[ii].n.attr.name);
+			//printk(KERN_DEBUG "Address match for %s\n", data->attr_array[ii].n.attr.name);
 			gpio_direction_output(data->attr_array[ii].gpio, value);
 			return size;
 		}
@@ -120,6 +120,22 @@ static void create_pin_attrs(struct platform_device *pdev)
 	{
 		enum of_gpio_flags flags = 0;
 		s32 gpio = of_get_gpio_flags(child, 0, &flags);
+		if (gpio == -EPROBE_DEFER) {
+			dev_info(&pdev->dev, "GPIO %s not available yet.  Try Again?\n", child->name);
+			continue;
+		}
+		if (gpio < 0) {
+			dev_info(&pdev->dev, "no property gpio for child of allocated-gpio\n");
+			continue;
+		}
+		status = gpio_request_one(gpio, flags, child->name);
+		if (status)
+		{
+			dev_info(&pdev->dev, "Unable to request GPIO: %d(%s)", gpio, child->name);
+			continue;
+		}
+		printk(KERN_INFO "GPIO #%d = %s(%d)\n", gpio, child->name, flags);
+		data->attr_array[num_attrs].gpio = gpio;
 
 		data->attr_array[num_attrs].n.attr.name = child->name;
 		data->attr_array[num_attrs].n.attr.mode = S_IRUGO;
@@ -148,8 +164,10 @@ static void create_pin_attrs(struct platform_device *pdev)
 		if (! of_property_read_bool(child, "input") )
 		{
 			data->attr_array[num_attrs].n.store = gpio_state_store;
-			data->attr_array[num_attrs].n.attr.mode = S_IWUGO | S_IRUGO;
 			data->attr_array[num_attrs].n.attr.mode = (S_IWUSR|S_IWGRP) | S_IRUGO;
+			if(gpio_direction_input(data->attr_array[num_attrs].gpio)) {
+				dev_info(&pdev->dev, "Unable to set GPIO to input\n");
+			}
 		}
 
 		printk(KERN_INFO "GPIO #%d = %s(%d)\n", gpio, child->name, flags);
