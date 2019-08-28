@@ -105,8 +105,8 @@ static int mmdev_probe(struct platform_device *pdev)
 
 	ret = of_property_read_string(pdev->dev.of_node, "imsar,name", &mmdev->info.name);
 	if(ret < 0) {
-		dev_info(&pdev->dev, "no property imsar,name\n");
-		mmdev->info.name = DEVICE_NAME;
+		dev_info(&pdev->dev, "no property imsar,name, using device name: %s\n", pdev->dev.of_node->name);
+		mmdev->info.name = pdev->dev.of_node->name;
 	}
 
 	mmdev->info.version = GIT_DESCRIBE;

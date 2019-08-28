@@ -12,6 +12,7 @@
 #include <linux/wait.h>
 #include <asm/io.h>
 #include <asm-generic/errno.h>
+#include <asm/ioctls.h>
 #include "version.h"
 
 #ifndef HZ
@@ -301,6 +302,10 @@ static long intc_ioctl(struct file *f, unsigned int request, unsigned long arg)
 		file_data->timeout = (milliseconds * HZ) / 1000;
 		break;
 	}
+	case TCGETS:
+		//Silently igore terminal commands
+		ret = -EINVAL;
+		break;
 	default:
 		printk(KERN_ERR "<%s> file: ioctl() %d, unrecognized request %d\n", DEVICE_NAME, ii, request);
 		ret = -EINVAL;

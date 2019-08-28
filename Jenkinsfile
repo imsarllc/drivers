@@ -1,26 +1,4 @@
-def promotionConfig = [
-    // Mandatory parameters
-    'targetRepo'         : 'fpga-deb-release',
-
-    // Optional parameters
-
-    // The build name and build number to promote. If not specified, the Jenkins job's build name and build number are used
-    'buildName'          : 'gpl_kernel_drivers',
-    'buildNumber'        : env.BUILD_NUMBER,
-    // Comment and Status to be displayed in the Build History tab in Artifactory
-    'comment'            : 'this is the promotion comment',
-    'status'             : 'Released',
-    // Specifies the source repository for build artifacts.
-    'sourceRepo'         : 'fpga-deb-nightly',
-    // Indicates whether to promote the build dependencies, in addition to the artifacts. False by default
-    //'includeDependencies': true,
-    // Indicates whether to copy the files. Move is the default
-    'copy'               : true,
-    // Indicates whether to fail the promotion process in case of failing to move or copy one of the files. False by default.
-    'failFast'           : true
-]
-
-node('merlin')
+node('kernel')
 {
   stage('Checkout')
   {
@@ -57,16 +35,28 @@ node('merlin')
           }
         ]
       }"""
-      def server = Artifactory.server 'artifactory'
-      def buildInfo = Artifactory.newBuildInfo()
-      buildInfo.env.capture = true
-      buildInfo.env.collect()
-      buildInfo.name = 'gpl_kernel_drivers'
-      buildInfo.retention maxBuilds: 10, deleteBuildArtifacts: true, async: true
-      server.upload spec: uploadSpec, buildInfo: buildInfo
-      server.publishBuildInfo buildInfo
-
-      Artifactory.addInteractivePromotion server: server, promotionConfig: promotionConfig, displayName: "Promote me please"
+      rtUpload(
+        serverId: 'artifactory',
+        spec: uploadSpec,
+      )
+      rtBuildInfo(
+        captureEnv: true,
+        maxBuilds: 10,
+        deleteBuildArtifacts: true
+      )
+      rtPublishBuildInfo(
+        serverId: 'artifactory',
+      )
+      rtAddInteractivePromotion(
+        serverId: 'artifactory'
+        displayName: 'Promote me please',
+        sourceRepo: 'fgpa-deb-nightly',
+        targetRepo: 'fpga-deb-release',
+        comment: 'Why are you promoting this?'
+        status: 'Released',
+        failFast: true,
+        copy: true
+      )
     }
   }
 }

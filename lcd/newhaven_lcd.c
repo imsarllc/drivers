@@ -459,6 +459,7 @@ static int lcd_probe(struct i2c_client *client,
 	char *buffer;
 	int ret = -ENOMEM;
 
+	dev_info(&client->dev, "Probing LCD driver\n");
 	of_property_read_u32(np, "height", &height);
 	of_property_read_u32(np, "width", &width);
 	if ((width == 0) || (height == 0)) {

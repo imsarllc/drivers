@@ -348,9 +348,9 @@ int hmcmode_write(void *context, unsigned int reg, unsigned int val)
 			.speed_hz	= spidev->speed_hz,
 		};
 	struct spi_message	m;
-	u8 *tx_buf = &tx_value;
 
 #ifdef DEBUG
+	u8 *tx_buf = &tx_value;
 	printk(KERN_DEBUG "Writing %02x %02x %02x %02x \n", tx_buf[0], tx_buf[1], tx_buf[2], tx_buf[3]);
 	printk(KERN_DEBUG "Writing 0x%08x\n", tx_value);
 #endif
@@ -654,7 +654,7 @@ static void create_reg_attrs(struct sarspi_data *spidev)
 		if (regmap_readable(spidev->regcfg, ii))
 			mode |= S_IRUGO;
 		if (regmap_writeable(spidev->regcfg, ii))
-			mode |= S_IWUGO;
+			mode |= S_IWUSR;
 		if (mode)
 		{
 			sysfs_attr_init(attrs[regs]);
