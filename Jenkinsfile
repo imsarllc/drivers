@@ -48,11 +48,11 @@ node('kernel')
         serverId: 'artifactory',
       )
       rtAddInteractivePromotion(
-        serverId: 'artifactory'
+        serverId: 'artifactory',
         displayName: 'Promote me please',
         sourceRepo: 'fgpa-deb-nightly',
         targetRepo: 'fpga-deb-release',
-        comment: 'Why are you promoting this?'
+        comment: 'Why are you promoting this?',
         status: 'Released',
         failFast: true,
         copy: true
