@@ -128,28 +128,11 @@ static void create_pin_attrs(struct platform_device *pdev)
 			dev_info(&pdev->dev, "no property gpio for child of allocated-gpio\n");
 			continue;
 		}
-		status = gpio_request_one(gpio, flags, child->name);
-		if (status)
-		{
-			dev_info(&pdev->dev, "Unable to request GPIO: %d(%s)", gpio, child->name);
-			continue;
-		}
 		printk(KERN_INFO "GPIO #%d = %s(%d)\n", gpio, child->name, flags);
-		data->attr_array[num_attrs].gpio = gpio;
 
 		data->attr_array[num_attrs].n.attr.name = child->name;
 		data->attr_array[num_attrs].n.attr.mode = S_IRUGO;
 		data->attr_array[num_attrs].n.show = gpio_state_show;
-		data->attr_array[num_attrs].gpio = -1;
-
-		if (gpio < 0)
-		{
-			dev_info(&pdev->dev, "no property gpio for child of allocated-gpio\n");
-			num_attrs++;
-			continue;
-		}
-		printk(KERN_INFO "GPIO #%d = %s(%d)\n", gpio, child->name, flags);
-
 		data->attr_array[num_attrs].gpio = gpio;
 
 		if (of_property_read_bool(child, "output-low"))
