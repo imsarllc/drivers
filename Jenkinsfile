@@ -52,7 +52,7 @@ node('kernel')
         "files": [
           {
             "pattern": "*.deb",
-            "target": "fpga-deb-nightly/pool/",
+            "target": "fpga-deb-nightly/pool/grizzly-kernel",
             "props": "deb.distribution=xenial;deb.distribution=bionic;deb.component=contrib;deb.architecture=armhf"
           }
         ]
