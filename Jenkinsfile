@@ -27,10 +27,6 @@ node('kernel')
     cleanWs()
     checkout scm
   }
-  stage('Build 2013.4')
-  {
-    sh('make 2013.4')
-  }
   stage('Build 2016.4')
   {
     sh('''\
