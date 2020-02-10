@@ -1,6 +1,6 @@
 KERNEL_VERSIONS = 2013.4 2016.4
 
-drivers = intc sarspi uio allocated-gpio lcd
+drivers = intc sarspi uio allocated-gpio lcd jtag
 
 default: 2016.4
 
