@@ -37,7 +37,7 @@
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Max Heimer <maxh@xilinx.com>");
 MODULE_DESCRIPTION("XVC Debug Register Access");
-MODULE_VERSION("0.1.0");
+MODULE_VERSION(GIT_DESCRIBE);
 
 static dev_t xvc_ioc_dev_region;
 static struct class* xvc_dev_class = NULL;
