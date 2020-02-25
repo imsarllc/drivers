@@ -51,6 +51,7 @@ else
   mkdir -p $VIVADO/etc/modules-load.d/
   echo sarspi > $VIVADO/etc/modules-load.d/sarspi.conf
   echo newhaven_lcd > $VIVADO/etc/modules-load.d/lcd.conf
+  echo xilinx_jtag > $VIVADO/etc/modules-load.d/jtag.conf
   fpm --post-install post_install.sh  \
     --output-type deb \
     --description 'Linux kernel and modules for a Zynq based Nanosar C system' \
