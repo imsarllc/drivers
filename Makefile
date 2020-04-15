@@ -13,7 +13,7 @@ drivers: $(KERNEL_VERSIONS)
 20%: export KREL=$(shell cat $(KDIR)/include/config/kernel.release)
 20%:
 	./version.sh
-	$(foreach dir,$(drivers),$(MAKE) -C $(dir) all;)
+	$(foreach dir,$(drivers),$(MAKE) -C $(dir) all || exit;)
 	VIVADO=$@ KDIR=$(KDIR) ./curate_artifacts.sh
 
 clean_all:
