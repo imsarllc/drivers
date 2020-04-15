@@ -36,6 +36,16 @@ node('kernel')
       rvm use
       make 2016.4'''.stripIndent())
   }
+  stage('Build 2019.2')
+  {
+    sh('''\
+      #!/bin/bash
+      source /etc/profile.d/rvm.sh;
+      type rvm | head -n 1;
+      rvm use
+      export CROSS_COMPILE?=/fpga_tools/Xilinx/Vitis/2019.2/gnu/aarch32/lin/gcc-arm-linux-gnueabi/bin/arm-linux-gnueabihf-
+      make 2019.2'''.stripIndent())
+  }
   stage('Archive')
   {
     archiveArtifacts artifacts: 'build/**', fingerprint: true

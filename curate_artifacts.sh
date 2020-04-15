@@ -1,4 +1,4 @@
-#!/bin/sh -e
+#!/bin/sh -ex
 if [ -z "$VIVADO" ]; then
   echo "Error: VIVADO is empty"
   false
@@ -14,7 +14,7 @@ else
   MDST=lib/modules
 fi
 KREL=$(cat $KDIR/include/config/kernel.release)
-VERSION=$(cat $KDIR/include/config/kernel.release | grep -o -P '\d\.\d')
+VERSION=$(cat $KDIR/include/config/kernel.release | grep -o -P '\d+\.\d+')
 BUILD_NUMBER=${BUILD_NUMBER:-0}
 
 mkdir -p    build/$VIVADO/etc/udev/rules.d/
