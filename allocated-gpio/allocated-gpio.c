@@ -232,6 +232,7 @@ static int allocated_gpio_remove(struct platform_device *pdev)
 		if (gpio >= 0)
 		{
 				gpio_unexport(gpio);
+				sysfs_remove_link(&pdev->dev.kobj, data->attr_array[ii].n.attr.name);
 				gpio_free(gpio);
 		}
 	}
