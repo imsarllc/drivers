@@ -58,8 +58,7 @@ ssize_t gpio_state_store(struct device *dev, struct device_attribute *attr, cons
 {
 	struct gpio_driver_data *data = (struct gpio_driver_data*) dev->platform_data;
 	int ii = 0;
-	int value = buf[0]-'0';
-	if (value != 0 && value != 1)
+	if (buf[0] != 0 && buf[0] != 1 && !strncasecmp(buf, "z", 1))
 	{
 		printk(KERN_ERR "Invalid GPIO value: '%s'\n", buf);
 		return -EINVAL;
@@ -70,10 +69,18 @@ ssize_t gpio_state_store(struct device *dev, struct device_attribute *attr, cons
 	{
 		if (attr == &(data->attr_array[ii].n) )
 		{
-			if (data->attr_array[ii].flags & GPIOF_ACTIVE_LOW)
-				value = !value;
-			//printk(KERN_DEBUG "Address match for %s\n", data->attr_array[ii].n.attr.name);
-			gpio_direction_output(data->attr_array[ii].gpio, value);
+
+			if (0 == strncasecmp(buf, "z", 1))
+			{
+				gpio_direction_input(data->attr_array[ii].gpio);
+			}
+			else
+			{
+				int value = buf[0]-'0';
+				if (data->attr_array[ii].flags & GPIOF_ACTIVE_LOW)
+					value = !value;
+				gpio_direction_output(data->attr_array[ii].gpio, value);
+			}
 			return size;
 		}
 	}
