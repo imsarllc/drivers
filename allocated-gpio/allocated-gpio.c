@@ -9,6 +9,7 @@
 #include <linux/slab.h>
 #include <linux/gpio.h>
 #include <linux/of_gpio.h>
+#include <dt-bindings/gpio/gpio.h>
 #include <asm-generic/errno.h>
 #include <linux/sysfs.h>
 #include <linux/device.h>
@@ -22,6 +23,7 @@ struct gpio_attribute
 {
 	struct device_attribute n;
 	s32 gpio;
+	s32 flags;
 };
 
 struct gpio_driver_data
@@ -44,6 +46,8 @@ ssize_t gpio_state_show(struct device *dev, struct device_attribute *attr, char 
 			int ret;
 			//printk(KERN_DEBUG "Address match for %s\n", data->attr_array[ii].n.attr.name);
 			ret = gpio_get_value_cansleep(data->attr_array[ii].gpio);
+			if (data->attr_array[ii].flags & GPIOF_ACTIVE_LOW)
+				ret = !ret;
 			return snprintf(buf, PAGE_SIZE, "%d\n", ret);
 		}
 	}
@@ -66,6 +70,8 @@ ssize_t gpio_state_store(struct device *dev, struct device_attribute *attr, cons
 	{
 		if (attr == &(data->attr_array[ii].n) )
 		{
+			if (data->attr_array[ii].flags & GPIOF_ACTIVE_LOW)
+				value = !value;
 			//printk(KERN_DEBUG "Address match for %s\n", data->attr_array[ii].n.attr.name);
 			gpio_direction_output(data->attr_array[ii].gpio, value);
 			return size;
@@ -118,8 +124,9 @@ static void create_pin_attrs(struct platform_device *pdev)
 	num_attrs = 0;
 	for_each_child_of_node(np, child)
 	{
-		enum of_gpio_flags flags = 0;
-		s32 gpio = of_get_gpio_flags(child, 0, &flags);
+		u32 flags = 0;
+		enum of_gpio_flags of_flags = 0;
+		s32 gpio = of_get_gpio_flags(child, 0, &of_flags);
 		if (gpio == -EPROBE_DEFER) {
 			dev_info(&pdev->dev, "GPIO %s not available yet.  Try Again?\n", child->name);
 			continue;
@@ -128,21 +135,25 @@ static void create_pin_attrs(struct platform_device *pdev)
 			dev_info(&pdev->dev, "no property gpio for child of allocated-gpio\n");
 			continue;
 		}
-		printk(KERN_INFO "GPIO #%d = %s(%d)\n", gpio, child->name, flags);
+		//printk(KERN_INFO "GPIO #%d = %s(%d)\n", gpio, child->name, flags);
 
 		data->attr_array[num_attrs].n.attr.name = child->name;
 		data->attr_array[num_attrs].n.attr.mode = S_IRUGO;
 		data->attr_array[num_attrs].n.show = gpio_state_show;
 		data->attr_array[num_attrs].gpio = gpio;
 
+		if (of_flags & GPIO_ACTIVE_LOW)
+			flags = GPIOF_ACTIVE_LOW;
+
 		if (of_property_read_bool(child, "output-low"))
-			flags = GPIOF_OUT_INIT_LOW | GPIOF_EXPORT_DIR_FIXED;
+			flags |= GPIOF_OUT_INIT_LOW | GPIOF_EXPORT_DIR_FIXED;
 		else if (of_property_read_bool(child, "output-high"))
-			flags = GPIOF_OUT_INIT_HIGH | GPIOF_EXPORT_DIR_FIXED;
+			flags |= GPIOF_OUT_INIT_HIGH | GPIOF_EXPORT_DIR_FIXED;
 		else if (of_property_read_bool(child, "input"))
-			flags = GPIOF_IN | GPIOF_EXPORT_DIR_FIXED;
+			flags |= GPIOF_IN | GPIOF_EXPORT_DIR_FIXED;
 		else
-			flags = GPIOF_IN | GPIOF_EXPORT_DIR_CHANGEABLE;
+			flags |= GPIOF_IN | GPIOF_EXPORT_DIR_CHANGEABLE;
+		data->attr_array[num_attrs].flags = flags;
 
 		if (! of_property_read_bool(child, "input") )
 		{
