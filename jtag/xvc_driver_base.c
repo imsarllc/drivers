@@ -28,6 +28,7 @@
 #include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/kernel.h>
+#include <linux/version.h>
 #include <asm/io.h>
 #include <linux/mod_devicetable.h>
 
@@ -90,8 +91,9 @@ long char_ctrl_ioctl(struct file *file_p, unsigned int cmd, unsigned long arg) {
 			status = -ENOIOCTLCMD;
 			break;
 	}
-
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,6,0)
 	mmiowb();
+#endif
 	spin_unlock_irqrestore(&file_p->f_path.dentry->d_inode->i_lock, irqflags);
 
 	return status;
