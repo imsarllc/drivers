@@ -109,7 +109,6 @@ static void create_pin_attrs(struct platform_device *pdev)
 	{
 		goto error;
 	}
-	data->num_attrs = num_attrs;
 	pdev->dev.platform_data = data;
 
 	printk(KERN_DEBUG "Creating %d attributes for %s\n", num_attrs, np->name);
@@ -182,7 +181,7 @@ static void create_pin_attrs(struct platform_device *pdev)
 		data->attr_list[num_attrs] = &data->attr_array[num_attrs].n.attr;
 		num_attrs++;
 	}
-
+	data->num_attrs = num_attrs;
 	data->reg_attr_group.attrs = data->attr_list;
 	data->reg_attr_group.name ="io";
 	status = sysfs_create_group(&pdev->dev.kobj, &data->reg_attr_group);
