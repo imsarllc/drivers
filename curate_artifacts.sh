@@ -28,6 +28,11 @@ rsync -a $KDIR/usr/lib/modules/$KREL/modules.builtin build/$VIVADO/$MDST/$KREL/
 /sbin/depmod -a -b build/$VIVADO $KREL
 
 sed "s/VERSION=.*/VERSION=$KREL/" post_install_template.sh > build/post_install.sh
+if [ $VIVADO == '2016.4' ]; then
+  package_name="grizzly-kernel"
+else
+  package_name="zynq-kernel"
+fi
 
 cd build
 
@@ -42,7 +47,7 @@ fpm --post-install post_install.sh  \
   -m 'IMSAR FPGA Team <fpga@imsar.com>' \
   --vendor 'IMSAR LLC' \
   --url 'https://www.imsar.com/' \
-  --name grizzly-kernel \
+  --name $package_name \
   -C $VIVADO \
   --architecture armhf \
   --version $VERSION \
@@ -50,4 +55,4 @@ fpm --post-install post_install.sh  \
   --force  \
   --input-type dir .
 
-ln grizzly-kernel_${VERSION}-${BUILD_NUMBER}_armhf.deb grizzly-kernel_${VERSION}-latest_armhf.deb
+ln ${package_name}_${VERSION}-${BUILD_NUMBER}_armhf.deb ${package_name}_${VERSION}-latest_armhf.deb
