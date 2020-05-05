@@ -58,7 +58,7 @@ ssize_t gpio_state_store(struct device *dev, struct device_attribute *attr, cons
 {
 	struct gpio_driver_data *data = (struct gpio_driver_data*) dev->platform_data;
 	int ii = 0;
-	if (buf[0] != 0 && buf[0] != 1 && !strncasecmp(buf, "z", 1))
+	if (buf[0] != '0' && buf[0] != '1' && strncasecmp(buf, "z", 1))
 	{
 		printk(KERN_ERR "Invalid GPIO value: '%s'\n", buf);
 		return -EINVAL;
