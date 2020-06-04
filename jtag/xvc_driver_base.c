@@ -180,12 +180,12 @@ int probe(struct platform_device* pdev) {
 		ioc_device_number = MKDEV(MAJOR(xvc_ioc_dev_region), minor);
 		xvc_ioc_device = device_create(xvc_dev_class, NULL, ioc_device_number, NULL, ioc_device_name);
 		if (PTR_ERR_OR_ZERO(xvc_ioc_device)) {
-			printk(KERN_WARNING LOG_PREFIX "Failed to create device %s", ioc_device_name);
+			dev_warn(&pdev->dev, LOG_PREFIX "Failed to create device %s", ioc_device_name);
 			xil_xvc_cleanup();
 			dev_err(&pdev->dev, "unable to create the device\n");
 			return status;
 		} else {
-			printk(KERN_INFO LOG_PREFIX "Created device %s", ioc_device_name);
+			dev_info(&pdev->dev, LOG_PREFIX "Created device %s", ioc_device_name);
 		}
 	} else {
 		dev_dbg(&pdev->dev, "no minor number available!\n");
@@ -203,12 +203,12 @@ int probe(struct platform_device* pdev) {
 		db_addr = db_res[minor]->start;
 		db_size = resource_size(db_res[minor]);
 	}
-	printk(KERN_ERR LOG_PREFIX "debug bridge %s memory at offset 0x%lX, size %lu", ioc_device_name, db_addr, db_size);
+	dev_err(&pdev->dev, LOG_PREFIX "debug bridge %s memory at offset 0x%lX, size %lu", ioc_device_name, db_addr, db_size);
 	if (!db_ptrs[minor] || IS_ERR(db_ptrs[minor])) {
-		printk(KERN_ERR LOG_PREFIX "Failed to remap debug bridge memory at offset 0x%lX, size %lu", db_addr, db_size);
+		dev_err(&pdev->dev, LOG_PREFIX "Failed to remap debug bridge memory at offset 0x%lX, size %lu", db_addr, db_size);
 		return -ENOMEM;
 	} else {
-		printk(KERN_INFO LOG_PREFIX "Mapped debug bridge at offset 0x%lX, size 0x%lX", db_addr, db_size);
+		dev_info(&pdev->dev, LOG_PREFIX "Mapped debug bridge at offset 0x%lX, size 0x%lX", db_addr, db_size);
 	}
 
 	return 0;
@@ -227,7 +227,7 @@ static int remove(struct platform_device* pdev) {
 					db_size = resource_size(db_res[i]);
 				}
 
-				printk(KERN_INFO LOG_PREFIX "Unmapping debug bridge at offset 0x%lX, size %lu", db_addr, db_size);
+				dev_info(&pdev->dev, LOG_PREFIX "Unmapping debug bridge at offset 0x%lX, size %lu", db_addr, db_size);
 				// devm_ioremap_resource is managed by the kernel and undone on driver detach.
 				mutex_lock(&device_list_lock);
 				db_ptrs[i] = NULL;
@@ -235,7 +235,7 @@ static int remove(struct platform_device* pdev) {
 				device_destroy(xvc_dev_class, ioc_device_number);
 				clear_bit(i, minors);
 				mutex_unlock(&device_list_lock);
-				printk(KERN_INFO LOG_PREFIX "Destroyed device number %u (user config %i)", ioc_device_number, i);
+				dev_info(&pdev->dev, LOG_PREFIX "Destroyed device number %u (user config %i)", ioc_device_number, i);
 			}
 		}
 	}

@@ -351,8 +351,8 @@ int hmcmode_write(void *context, unsigned int reg, unsigned int val)
 
 #ifdef DEBUG
 	u8 *tx_buf = &tx_value;
-	printk(KERN_DEBUG "Writing %02x %02x %02x %02x \n", tx_buf[0], tx_buf[1], tx_buf[2], tx_buf[3]);
-	printk(KERN_DEBUG "Writing 0x%08x\n", tx_value);
+	dev_dbg(spidev->dev, "Writing %02x %02x %02x %02x \n", tx_buf[0], tx_buf[1], tx_buf[2], tx_buf[3]);
+	dev_dbg(spidev->dev, "Writing 0x%08x\n", tx_value);
 #endif
 	spi_message_init(&m);
 	spi_message_add_tail(&t, &m);
@@ -385,7 +385,7 @@ int hmcmode_read(void *context, unsigned int reg, unsigned int *ret)
 	status = spidev_sync(spidev, &m);
 	if (status < 0)
 	{
-		printk(KERN_ERR "Unable to send data to HMC spi\n");
+		dev_err(spidev->dev, "Unable to send data to HMC spi\n");
 		return status;
 	}
 	val = be32_to_cpu(rx_stream);
@@ -404,7 +404,7 @@ static ssize_t spidev_reg_show(struct device *dev, struct device_attribute *attr
 
 	if (kstrtouint(attr->attr.name, 16, &addr))
 	{
-		printk(KERN_ERR "Unable to parse Address.  Bad attribute name: 0x%s\n", attr->attr.name);
+		dev_err(dev, "Unable to parse Address.  Bad attribute name: 0x%s\n", attr->attr.name);
 		return 0;
 	}
 	regmap_read(spidev->regmap, addr, &val);
@@ -421,13 +421,13 @@ static ssize_t spidev_reg_store(struct device *dev, struct device_attribute *att
 
 	if (kstrtouint(attr->attr.name, 16, &addr))
 	{
-		printk(KERN_ERR "Unable to parse Address.  Bad attribute name: 0x%s\n", attr->attr.name);
+		dev_err(dev, "Unable to parse Address.  Bad attribute name: 0x%s\n", attr->attr.name);
 		return count;
 	}
 
 	if (kstrtouint(buf, 0, &val))
 	{
-		printk(KERN_ERR "Unable to parse int from value: %s\n", buf);
+		dev_err(dev, "Unable to parse int from value: %s\n", buf);
 		return count;
 	}
 
@@ -604,7 +604,7 @@ static void create_reg_attrs(struct sarspi_data *spidev)
 
 	if (!spidev->regcfg)
 	{
-		printk(KERN_ERR "regcfg is empty.\n");
+		dev_info(spidev->dev, "regcfg is empty\n");
 		return;
 	}
 
@@ -616,7 +616,7 @@ static void create_reg_attrs(struct sarspi_data *spidev)
 
 	if (!spidev->regmap)
 	{
-		printk(KERN_ERR "Unable to init regmap\n");
+		dev_err(spidev->dev, "Unable to init regmap\n");
 		return;
 	}
 
@@ -625,7 +625,7 @@ static void create_reg_attrs(struct sarspi_data *spidev)
 			regs++;
 	}
 	spidev->reg_attrs = regs;
-	printk(KERN_DEBUG "Creating %d attributes for %s\n", regs, spidev->name);
+	dev_dbg(spidev->dev, "Creating %d attributes for %s\n", regs, spidev->name);
 
 	attr_size = regs * sizeof(struct device_attribute);
 	spidev->attr_array = (struct device_attribute*)kzalloc(attr_size, GFP_KERNEL);
@@ -672,7 +672,7 @@ static void create_reg_attrs(struct sarspi_data *spidev)
 	spidev->reg_attr_group->name ="regs";
 	status = sysfs_create_group(&spidev->spi->dev.kobj, spidev->reg_attr_group);
 	if (status)
-		printk(KERN_ERR "Failed to create register attributes: %d\n", status);
+		dev_err(spidev->dev, "Failed to create register attributes: %d\n", status);
 	return;
 
 group_error:
@@ -684,8 +684,7 @@ array_error:
 	kfree(spidev->attr_array);
 	spidev->attr_array = 0;
 
-	printk(KERN_ERR "Unable to allocate register attributes\n");
-
+	dev_err(spidev->dev, "Unable to allocate register attributes\n");
 }
 
 /*-------------------------------------------------------------------------*/

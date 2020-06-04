@@ -44,7 +44,7 @@ ssize_t gpio_state_show(struct device *dev, struct device_attribute *attr, char 
 		if (attr == &(data->attr_array[ii].n) )
 		{
 			int ret;
-			//printk(KERN_DEBUG "Address match for %s\n", data->attr_array[ii].n.attr.name);
+			//dev_dbg(dev, "Address match for %s\n", data->attr_array[ii].n.attr.name);
 			ret = gpio_get_value_cansleep(data->attr_array[ii].gpio);
 			if (data->attr_array[ii].flags & GPIOF_ACTIVE_LOW)
 				ret = !ret;
@@ -60,11 +60,11 @@ ssize_t gpio_state_store(struct device *dev, struct device_attribute *attr, cons
 	int ii = 0;
 	if (buf[0] != '0' && buf[0] != '1' && strncasecmp(buf, "z", 1))
 	{
-		printk(KERN_ERR "Invalid GPIO value: '%s'\n", buf);
+		dev_err(dev, "Invalid GPIO value: '%s'\n", buf);
 		return -EINVAL;
 	}
 
-	printk(KERN_DEBUG "Setting output %s to %c\n", attr->attr.name, buf[0]);
+	dev_dbg(dev, "Setting output %s to %c\n", attr->attr.name, buf[0]);
 	for (ii = 0; ii < data->num_attrs; ii++)
 	{
 		if (attr == &(data->attr_array[ii].n) )
@@ -111,7 +111,7 @@ static void create_pin_attrs(struct platform_device *pdev)
 	}
 	pdev->dev.platform_data = data;
 
-	printk(KERN_DEBUG "Creating %d attributes for %s\n", num_attrs, np->name);
+	dev_dbg(&pdev->dev, "Creating %d attributes for %s\n", num_attrs, np->name);
 
 	attr_size = num_attrs * sizeof(struct gpio_attribute);
 	data->attr_array = (struct gpio_attribute*)kzalloc(attr_size, GFP_KERNEL);
@@ -141,7 +141,7 @@ static void create_pin_attrs(struct platform_device *pdev)
 			dev_info(&pdev->dev, "no property gpio for child of allocated-gpio\n");
 			continue;
 		}
-		//printk(KERN_INFO "GPIO #%d = %s(%d)\n", gpio, child->name, flags);
+		//dev_info(&pdev->dev, "GPIO #%d = %s(%d)\n", gpio, child->name, flags);
 
 		data->attr_array[num_attrs].n.attr.name = child->name;
 		data->attr_array[num_attrs].n.attr.mode = S_IRUGO;
@@ -170,7 +170,7 @@ static void create_pin_attrs(struct platform_device *pdev)
 			}
 		}
 
-		printk(KERN_INFO "GPIO #%d = %s(%d)\n", gpio, child->name, flags);
+		dev_info(&pdev->dev, "GPIO #%d = %s(%d)\n", gpio, child->name, flags);
 		status = gpio_request_one(gpio, flags, child->name);
 		if (status)
 		{
@@ -186,7 +186,7 @@ static void create_pin_attrs(struct platform_device *pdev)
 	data->reg_attr_group.name ="io";
 	status = sysfs_create_group(&pdev->dev.kobj, &data->reg_attr_group);
 	if (status)
-		printk(KERN_ERR "Failed to create pin attributes: %d\n", status);
+		dev_err(&pdev->dev, "Failed to create pin attributes: %d\n", status);
 	return;
 
 list_error:
@@ -195,7 +195,7 @@ list_error:
 array_error:
 	data->attr_array = 0;
 error:
-	printk(KERN_ERR "Unable to allocate register attributes\n");
+	dev_err(&pdev->dev, "Unable to allocate register attributes\n");
 }
 
 
@@ -208,8 +208,6 @@ error:
 
 static int allocated_gpio_probe(struct platform_device *pdev)
 {
-	printk(KERN_ERR "Probing allocated gpio\n");
-
 	dev_info(&pdev->dev, "%s version: %s (%s)\n", "IMSAR gpio driver", GIT_DESCRIBE, BUILD_DATE);
 
 	create_pin_attrs(pdev);
