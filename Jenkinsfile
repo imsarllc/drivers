@@ -29,12 +29,13 @@ node('kernel')
   }
   stage('Build 2016.4')
   {
+    sh('make 2016.4')
+  }
+  stage('Build 2019.2')
+  {
     sh('''\
-      #!/bin/bash
-      source /etc/profile.d/rvm.sh; 
-      type rvm | head -n 1; 
-      rvm use
-      make 2016.4'''.stripIndent())
+      export CROSS_COMPILE=/fpga_tools/Xilinx/Vitis/2019.2/gnu/aarch32/lin/gcc-arm-linux-gnueabi/bin/arm-linux-gnueabihf-
+      make 2019.2'''.stripIndent())
   }
   stage('Archive')
   {
@@ -47,9 +48,14 @@ node('kernel')
       def uploadSpec = """{
         "files": [
           {
-            "pattern": "*.deb",
+            "pattern": "grizzly-kernel_4.6*.deb",
             "target": "fpga-deb-nightly/pool/grizzly-kernel/",
-            "props": "deb.distribution=xenial;deb.distribution=bionic;deb.component=contrib;deb.architecture=armhf"
+            "props": "deb.distribution=xenial;deb.component=contrib;deb.architecture=armhf"
+          },
+          {
+            "pattern": "zynq-kernel_4.19*.deb",
+            "target": "fpga-deb-nightly/pool/grizzly-kernel/",
+            "props": "deb.distribution=bionic;deb.component=contrib;deb.architecture=armhf"
           }
         ]
       }"""
