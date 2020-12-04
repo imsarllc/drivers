@@ -48,12 +48,12 @@ node('kernel')
       def uploadSpec = """{
         "files": [
           {
-            "pattern": "grizzly-kernel_4.6*.deb",
+            "pattern": "build/grizzly-kernel_4.6*.deb",
             "target": "fpga-deb-nightly/pool/grizzly-kernel/",
             "props": "deb.distribution=xenial;deb.component=contrib;deb.architecture=armhf"
           },
           {
-            "pattern": "zynq-kernel_4.19*.deb",
+            "pattern": "build/zynq-kernel_4.19*.deb",
             "target": "fpga-deb-nightly/pool/grizzly-kernel/",
             "props": "deb.distribution=bionic;deb.component=contrib;deb.architecture=armhf"
           }
