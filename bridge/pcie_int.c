@@ -2,6 +2,8 @@
 #include <linux/module.h>
 #include <linux/pci.h>
 
+#include <linux/log2.h>
+
 #include <linux/interrupt.h>
 #include <linux/irqdomain.h>
 #include <linux/irq.h>
@@ -62,24 +64,27 @@ static struct irq_chip intc_dev = {
 
 static unsigned int get_irq(struct intc_info *local_intc)
 {
-	unsigned int irq;
+	int irq = -1;
 	unsigned int hwirq;
-	hwirq = 2;
-	irq = irq_find_mapping(local_intc->domain, hwirq);
+	unsigned int mask;
+
+	mask = ioread16(local_intc->baseaddr + ISR);
+	hwirq = ilog2(mask);
+	if (mask)
+		irq = irq_find_mapping(local_intc->domain, hwirq);
+
+	pr_debug("get_irq: hwirq=%d, irq=%d\n", hwirq, irq);
 	return irq;
 }
 
 static int xintc_map(struct irq_domain *d, unsigned int irq, irq_hw_number_t hw)
 {
 	struct intc_info *local_intc = d->host_data;
-	pr_err("Called Interrupt map with domain name %s, irq %d & hw_irq=%ld. Host: %p\n",
-	       //
+	pr_err("Called Interrupt map with domain name %s, irq %d & hw_irq=%ld. Host: %p\n", //
 	       d->name, irq, hw, d->host_data);
 
 	irq_set_chip_and_handler_name(irq, &intc_dev, handle_edge_irq, "edge");
 	irq_clear_status_flags(irq, IRQ_LEVEL);
-
-	// irq_set_chip_and_handler_name(irq, &intc_dev, handle_level_irq, "level");
 	irq_set_chip_data(irq, local_intc);
 	return 0;
 }
@@ -104,9 +109,10 @@ static void irq_flow_handler(struct irq_desc *desc)
          * controller to see which interrupt is active
          */
 	irq = get_irq(local_intc);
-	// irq = desc->irq_data.irq;
-
-	generic_handle_irq(irq);
+	while (irq != -1) {
+		generic_handle_irq(irq);
+		irq = get_irq(local_intc);
+	}
 
 	chained_irq_exit(chip, desc);
 }
@@ -135,10 +141,12 @@ int imsar_setup_interrupts(struct pci_dev *dev, struct device_node *fpga_node)
 	version = ioread16(intc_info->baseaddr + IDR);
 	id = ioread16(intc_info->baseaddr + VER);
 	pr_info("id = %x, Version = %x\n", id, version);
-	iowrite32(0x03020100, intc_info->baseaddr + IVM + 0x0);
-	iowrite32(0x07060504, intc_info->baseaddr + IVM + 0x4);
-	iowrite32(0x0b0a0908, intc_info->baseaddr + IVM + 0x8);
-	iowrite32(0x0f0e0d0c, intc_info->baseaddr + IVM + 0xc);
+	// All interrupts map to vector message 0.
+	// Later, we may want to remap internal messages to other iterrupts.
+	// iowrite32(0x03020100, intc_info->baseaddr + IVM + 0x0);
+	// iowrite32(0x07060504, intc_info->baseaddr + IVM + 0x4);
+	// iowrite32(0x0b0a0908, intc_info->baseaddr + IVM + 0x8);
+	// iowrite32(0x0f0e0d0c, intc_info->baseaddr + IVM + 0xc);
 
 	iowrite16(0, intc_info->baseaddr + IER);
 
@@ -162,10 +170,6 @@ int imsar_setup_interrupts(struct pci_dev *dev, struct device_node *fpga_node)
 	// irq_set_handler(dev->irq + 1, irq_flow_handler);
 	// irq_set_handler(dev->irq + 2, irq_flow_handler);
 
-	//if ((rv = request_irq(pci_irq_vector(dev, 0), irq_handler, IRQF_PROBE_SHARED, "pci_irq_handler0", &major))) {
-	//    dev_err(&(dev->dev), "Couldn't use IRQ#%d, %d \n", dev->irq, rv);
-	//    return rv;
-	//}
 	return rv;
 }
 

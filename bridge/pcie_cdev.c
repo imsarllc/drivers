@@ -257,10 +257,7 @@ static int create_cdev(struct pci_dev *pci_dev, struct device_node *nail_node)
 		goto cleanup_chrdev;
 	}
 	// TODO: Create attrs
-	// cl->dev_groups = attr_groups;
-
-	// rv = kobject_set_name(&xcdev->info.kobj, devnode_names[type], xdev->idx);
-	// xcdev->cdevno = MKDEV(xpdev->major, minor);
+	// cls->dev_groups = attr_groups;
 
 	for_each_child_of_node (nail_node, child) {
 		u32 reg_prop[2];
@@ -268,8 +265,6 @@ static int create_cdev(struct pci_dev *pci_dev, struct device_node *nail_node)
 		struct device *device;
 
 		dev_t child_dev = MKDEV(MAJOR(dev_num), MINOR(dev_num) + index);
-		// cdev_init
-		// cdev_add
 		device = device_create(nail->cls, NULL, child_dev, nail, "nail%d", index);
 		if (IS_ERR_OR_NULL(device)) {
 			pr_err("Unable to create device\n");
