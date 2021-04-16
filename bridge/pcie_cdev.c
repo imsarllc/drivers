@@ -52,7 +52,7 @@ static ssize_t check_transfer(struct file *file, const char __user *buf, size_t 
 	struct cdev_info *info = file->private_data;
 
 	if (count & 3) {
-		pr_err("Buffer size must be a multiple of 4 bytes. Not %d\n", count);
+		pr_err("Buffer size must be a multiple of 4 bytes. Not %ld\n", count);
 		return -EINVAL;
 	}
 

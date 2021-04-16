@@ -9,11 +9,6 @@
 #include <linux/irq.h>
 #include <linux/irqchip/chained_irq.h>
 
-// static void __iomem *mmio;
-// const int INTERRUPT_MASK_OFFSET = 0x2004;
-// const int INTERRUPT_SET_OFFSET = 0x2008;
-// const int INTERRUPT_CLEAR_OFFSET = 0x200c;
-
 struct intc_info {
 	void __iomem *baseaddr;
 	struct irq_domain *domain;
@@ -64,7 +59,7 @@ static struct irq_chip intc_dev = {
 
 static unsigned int get_irq(struct intc_info *local_intc)
 {
-	int irq = -1;
+	int irq = 0;
 	unsigned int hwirq;
 	unsigned int mask;
 
@@ -80,8 +75,8 @@ static unsigned int get_irq(struct intc_info *local_intc)
 static int xintc_map(struct irq_domain *d, unsigned int irq, irq_hw_number_t hw)
 {
 	struct intc_info *local_intc = d->host_data;
-	pr_err("Called Interrupt map with domain name %s, irq %d & hw_irq=%ld. Host: %p\n", //
-	       d->name, irq, hw, d->host_data);
+	pr_debug("Called Interrupt map with domain name %s, irq %d & hw_irq=%ld. Host: %p\n", //
+		 d->name, irq, hw, d->host_data);
 
 	irq_set_chip_and_handler_name(irq, &intc_dev, handle_edge_irq, "edge");
 	irq_clear_status_flags(irq, IRQ_LEVEL);
@@ -109,7 +104,7 @@ static void irq_flow_handler(struct irq_desc *desc)
          * controller to see which interrupt is active
          */
 	irq = get_irq(local_intc);
-	while (irq != -1) {
+	while (irq) {
 		generic_handle_irq(irq);
 		irq = get_irq(local_intc);
 	}

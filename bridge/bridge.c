@@ -56,7 +56,11 @@ static int probe(struct pci_dev *dev, const struct pci_device_id *id)
 
 	pci_set_master(dev);
 	// Only 32-bit DMA capable.
-	pci_set_dma_mask(dev, 0xffffffffL);
+	if (!pci_set_dma_mask(dev, DMA_BIT_MASK(32))) {
+		pci_set_consistent_dma_mask(dev, DMA_BIT_MASK(32));
+	} else {
+		pr_err("No suitable DMA mask\n");
+	}
 
 	drvdata = kzalloc(sizeof(struct imsar_pcie), GFP_KERNEL);
 	drvdata->pci = dev;
@@ -100,7 +104,7 @@ static struct pci_device_id id_table[] = {
 MODULE_DEVICE_TABLE(pci, id_table);
 
 static struct pci_driver pci_driver = {
-	.name = "imar_pcie",
+	.name = "imsar_pcie",
 	.id_table = id_table,
 	.probe = probe,
 	.remove = remove,
