@@ -76,6 +76,9 @@ static ssize_t char_read(struct file *file, char __user *buf, size_t count, loff
 	ssize_t copied;
 	size_t remaining = info->size - *pos;
 
+	if (remaining == 0)
+		return 0; //EOF
+
 	rv = check_transfer(file, buf, count, pos);
 	if (rv)
 		return rv;
@@ -99,6 +102,9 @@ static ssize_t char_write(struct file *file, const char __user *buf, size_t coun
 	ssize_t copied;
 	size_t remaining = info->size - *pos;
 
+	if (remaining == 0)
+		return -EFBIG;
+
 	rv = check_transfer(file, buf, count, pos);
 	if (rv)
 		return rv;
@@ -117,22 +123,24 @@ static ssize_t char_write(struct file *file, const char __user *buf, size_t coun
 static loff_t char_llseek(struct file *file, loff_t off, int whence)
 {
 	loff_t newpos = 0;
+	struct cdev_info *info = file->private_data;
 
 	switch (whence) {
-	case 0: /* SEEK_SET */
+	case SEEK_SET:
 		newpos = off;
 		break;
-	case 1: /* SEEK_CUR */
+	case SEEK_CUR:
 		newpos = file->f_pos + off;
 		break;
-	case 2: /* SEEK_END, @TODO should work from end of address space */
-		newpos = UINT_MAX + off;
+	case SEEK_END:
+		return -EINVAL;
 		break;
 	default: /* can't happen */
 		return -EINVAL;
 	}
-	if (newpos < 0)
+	if (newpos < 0 || newpos >= info->size)
 		return -EINVAL;
+
 	file->f_pos = newpos;
 	pr_debug("%s: pos=%lld\n", __func__, (signed long long)newpos);
 
@@ -192,6 +200,35 @@ static struct file_operations fops = {
 	.llseek = char_llseek,
 	.mmap = char_mmap,
 };
+
+static ssize_t name_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct cdev_info *cdev = dev_get_drvdata(dev);
+	return sprintf(buf, "%s\n", cdev->name);
+}
+static DEVICE_ATTR_RO(name);
+
+static ssize_t addr_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct cdev_info *cdev = dev_get_drvdata(dev);
+	return sprintf(buf, "0x%llx\n", cdev->addr);
+}
+static DEVICE_ATTR_RO(addr);
+
+static ssize_t size_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct cdev_info *cdev = dev_get_drvdata(dev);
+	return sprintf(buf, "%lld\n", cdev->size);
+}
+static DEVICE_ATTR_RO(size);
+
+static struct attribute *nail_attrs[] = {
+	&dev_attr_name.attr,
+	&dev_attr_addr.attr,
+	&dev_attr_size.attr,
+	NULL,
+};
+ATTRIBUTE_GROUPS(nail);
 
 static void destroy_cdev(struct pci_dev *pci_dev)
 {
@@ -256,8 +293,7 @@ static int create_cdev(struct pci_dev *pci_dev, struct device_node *nail_node)
 		rv = -ENOMEM;
 		goto cleanup_chrdev;
 	}
-	// TODO: Create attrs
-	// cls->dev_groups = attr_groups;
+	nail->cls->dev_groups = nail_groups;
 
 	for_each_child_of_node (nail_node, child) {
 		u32 reg_prop[2];
@@ -280,6 +316,7 @@ static int create_cdev(struct pci_dev *pci_dev, struct device_node *nail_node)
 			cdev->vaddr = devm_ioremap(&pci_dev->dev, cdev->addr, cdev->size);
 		}
 
+		dev_set_drvdata(device, cdev);
 		cdev->name = child->name;
 		cdev->dev_num = child_dev;
 
