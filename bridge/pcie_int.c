@@ -142,6 +142,10 @@ int imsar_setup_interrupts(struct pci_dev *dev, struct device_node *fpga_node)
 	// iowrite32(0x07060504, intc_info->baseaddr + IVM + 0x4);
 	// iowrite32(0x0b0a0908, intc_info->baseaddr + IVM + 0x8);
 	// iowrite32(0x0f0e0d0c, intc_info->baseaddr + IVM + 0xc);
+	iowrite32(0, intc_info->baseaddr + IVM + 0x0);
+	iowrite32(0, intc_info->baseaddr + IVM + 0x4);
+	iowrite32(0, intc_info->baseaddr + IVM + 0x8);
+	iowrite32(0, intc_info->baseaddr + IVM + 0xc);
 
 	iowrite16(0, intc_info->baseaddr + IER);
 
