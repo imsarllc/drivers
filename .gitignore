@@ -1,7 +1,9 @@
 *.ko
 *.o*
 *.mod.*
+*.cmd
 build
 version.h
 Module.symvers 
 modules.order
+.vscode
