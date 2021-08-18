@@ -66,7 +66,7 @@ static int probe(struct pci_dev *dev, const struct pci_device_id *id)
 	drvdata->pci = dev;
 	pci_set_drvdata(dev, drvdata);
 
-	fpga_node = of_find_compatible_node(NULL, NULL, "pci10ee_9024");
+	fpga_node = of_find_compatible_node(NULL, NULL, "pci10ee_9034");
 	if (fpga_node) {
 		dev->dev.of_node = fpga_node;
 		imsar_setup_interrupts(dev, fpga_node);
@@ -94,7 +94,7 @@ static void remove(struct pci_dev *dev)
 }
 
 #define VENDOR_ID 0x10ee
-#define DEVICE_ID 0x9024
+#define DEVICE_ID 0x9034
 
 static struct pci_device_id id_table[] = {
 	{ PCI_DEVICE(VENDOR_ID, DEVICE_ID) },
