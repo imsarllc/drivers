@@ -85,7 +85,7 @@ static void axi_mask_ack(struct irq_data *data)
 }
 
 static struct irq_chip intc_dev = {
-	.name = "MSI irq bridge",
+	.name = "msi-bridge",
 	.irq_enable = axi_enable_or_unmask,
 	.irq_unmask = axi_enable_or_unmask,
 	.irq_disable = axi_disable_or_mask,
@@ -98,16 +98,12 @@ static unsigned int get_irq(struct intc_info *local_intc)
 {
 	int irq = 0;
 	unsigned int hwirq;
-	// unsigned int mask;
+	unsigned int mask;
 
-	hwirq = ioread32(local_intc->x_baseaddr + X_IVR);
+	mask = ioread32(local_intc->x_baseaddr + X_IPR);
+	hwirq = ilog2(mask);
 	if (hwirq != -1U)
 		irq = irq_find_mapping(local_intc->domain, hwirq);
-
-	// mask = ioread16(local_intc->baseaddr + ISR);
-	// hwirq = ilog2(mask);
-	// if (mask)
-	// 	irq = irq_find_mapping(local_intc->domain, hwirq);
 
 	pr_err("get_irq: hwirq=%d, irq=%d\n", hwirq, irq);
 	return irq;
@@ -124,9 +120,11 @@ static int xintc_map(struct irq_domain *d, unsigned int irq, irq_hw_number_t hw)
 	if (local_intc->edge_mask & (1 << hw)) {
 		irq_set_chip_and_handler_name(irq, &intc_dev, handle_edge_irq, "edge");
 		irq_clear_status_flags(irq, IRQ_LEVEL);
+		irq_set_irq_type(irq, IRQ_TYPE_EDGE_RISING);
 	} else {
 		irq_set_chip_and_handler_name(irq, &intc_dev, handle_level_irq, "level");
 		irq_set_status_flags(irq, IRQ_LEVEL);
+		irq_set_irq_type(irq, IRQ_TYPE_LEVEL_HIGH);
 	}
 
 	irq_set_chip_data(irq, local_intc);
@@ -180,6 +178,7 @@ int imsar_setup_interrupts(struct pci_dev *dev, struct device_node *fpga_node)
 		pr_err("Didn't find axi intc expander child node.  Interrupts will be disabled\n");
 		return -ENOENT;
 	}
+
 	intc_info->x_baseaddr = of_iomap(axi_intc_node, 0);
 	if (!intc_info->x_baseaddr) {
 		pr_err("Unable to map memory for axi intc expander\n");
@@ -198,11 +197,6 @@ int imsar_setup_interrupts(struct pci_dev *dev, struct device_node *fpga_node)
 	id = ioread16(intc_info->pcie_baseaddr + VER);
 	pr_info("id = %x, Version = %x\n", id, version);
 	// All interrupts map to vector message 0.
-	// Later, we may want to remap internal messages to other iterrupts.
-	// iowrite32(0x03020100, intc_info->pcie_baseaddr + IVM + 0x0);
-	// iowrite32(0x07060504, intc_info->pcie_baseaddr + IVM + 0x4);
-	// iowrite32(0x0b0a0908, intc_info->pcie_baseaddr + IVM + 0x8);
-	// iowrite32(0x0f0e0d0c, intc_info->pcie_baseaddr + IVM + 0xc);
 	iowrite32(0, intc_info->pcie_baseaddr + IVM + 0x0);
 	iowrite32(0, intc_info->pcie_baseaddr + IVM + 0x4);
 	iowrite32(0, intc_info->pcie_baseaddr + IVM + 0x8);
