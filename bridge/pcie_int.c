@@ -85,7 +85,7 @@ static void axi_mask_ack(struct irq_data *data)
 }
 
 static struct irq_chip intc_dev = {
-	.name = "IMSAR MSI interrupt bridge",
+	.name = "MSI irq bridge",
 	.irq_enable = axi_enable_or_unmask,
 	.irq_unmask = axi_enable_or_unmask,
 	.irq_disable = axi_disable_or_mask,
@@ -207,9 +207,10 @@ int imsar_setup_interrupts(struct pci_dev *dev, struct device_node *fpga_node)
 	iowrite32(0, intc_info->pcie_baseaddr + IVM + 0x4);
 	iowrite32(0, intc_info->pcie_baseaddr + IVM + 0x8);
 	iowrite32(0, intc_info->pcie_baseaddr + IVM + 0xc);
+
 	iowrite16(0, intc_info->pcie_baseaddr + IER);
 
-	vec = pci_alloc_irq_vectors(dev, 1, 1, PCI_IRQ_ALL_TYPES);
+	vec = pci_alloc_irq_vectors(dev, 1, 1, PCI_IRQ_MSI);
 	if (vec < 0)
 		pr_err("Unable to enable MSI\n");
 	pr_info("Got %d vectors for irq use\n", vec);
@@ -228,7 +229,7 @@ int imsar_setup_interrupts(struct pci_dev *dev, struct device_node *fpga_node)
 	enable_irq(dev->irq);
 
 	// Enable PCIe interrupt 0 from AXI intc
-	iowrite16(0x4, intc_info->pcie_baseaddr + SIE);
+	iowrite16(0x1, intc_info->pcie_baseaddr + SIE);
 
 	/*
 	 * Disable all external interrupts until they are
