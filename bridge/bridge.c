@@ -69,9 +69,11 @@ static int probe(struct pci_dev *dev, const struct pci_device_id *id)
 	fpga_node = of_find_compatible_node(NULL, NULL, "pci10ee_9034");
 	if (fpga_node) {
 		dev->dev.of_node = fpga_node;
-		imsar_setup_interrupts(dev, fpga_node);
 		imsar_setup_nail(dev, fpga_node);
 		setup_axil(dev, fpga_node);
+		// Interrupt controller is on the axi-lite bus, but
+		// axil devices need interrupts enabled.
+		imsar_setup_interrupts(dev, fpga_node);
 	} else {
 		pr_err("Didn't find fpga node.  No children enabled\n");
 	}
