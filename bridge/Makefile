@@ -1,5 +1,6 @@
 obj-m += imsar.o
 obj-m += iio_test.o
+obj-m += interrupt_cdev.o
 
 imsar-objs := bridge.o pcie_int.o pcie_cdev.o
 
@@ -9,21 +10,24 @@ PWD := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 KDIR:=/home/derrickg/src/nvidia/Tegra186_Linux_R32.5.0/Linux_for_Tegra/sources/kernel/kernel-4.9
 
 ARCH=arm64
-LOCALVERSION=-tegra-adi 
+LOCALVERSION=-tegra-adi
 CROSS_COMPILE=/opt/gcc-linaro-7.3.1-2018.05-x86_64_aarch64-linux-gnu/bin/aarch64-linux-gnu-
 
 
-test: all
-	rsync *.ko xavier1:.
-	ssh xavier1 "sudo dmesg -C; sudo rmmod imsar; sudo insmod imsar.ko; dmesg"
-
 all:
-	ARCH=$(ARCH) LOCALVERSION=$(LOCALVERSION) CROSS_COMPILE=$(CROSS_COMPILE) $(MAKE) -C $(KDIR) M=$(PWD) modules
+	ARCH=$(ARCH) LOCALVERSION=$(LOCALVERSION) CROSS_COMPILE=$(CROSS_COMPILE) $(MAKE) -C $(KDIR) M=$(PWD) modules KBUILD_EXTRA_SYMBOLS=$(KDIR)/Module.symvers
+
+upload: all
+	rsync --progress *.ko xavier1:.
+
+test: upload
+	ssh xavier1 "sudo dmesg -C; sudo rmmod imsar; sudo insmod imsar.ko; dmesg"
+	#ssh xavier1 "sudo dmesg -C; sudo rmmod iio_test; sudo insmod iio_test.ko; dmesg"
 
 deps: all
 	python .vscode/generate_compdb.py -O $(KDIR) $(PWD)
 
-unload: 
+unload:
 	-sudo rmmod dmac
 	-sudo rmmod ep
 
