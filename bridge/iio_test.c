@@ -77,92 +77,11 @@ static const struct iio_chan_spec test_channels[] = {
 },
 };
 
-#include "linux/iio/buffer-dma.h"
-struct dmaengine_buffer {
-	struct iio_dma_buffer_queue queue;
-
-	struct dma_chan *chan;
-	struct list_head active;
-
-	size_t align;
-	u32 max_size;
-};
-
-static void my_iio_dmaengine_buffer_block_done(void *data)
-{
-	struct iio_dma_buffer_block *block = data;
-	unsigned long flags;
-
-	spin_lock_irqsave(&block->queue->list_lock, flags);
-	list_del(&block->head);
-	spin_unlock_irqrestore(&block->queue->list_lock, flags);
-	iio_dma_buffer_block_done(block);
-}
-
-static struct dmaengine_buffer *iio_buffer_to_dmaengine_buffer(struct iio_buffer *buffer)
-{
-	return container_of(buffer, struct dmaengine_buffer, queue.buffer);
-}
-
-int my_iio_dmaengine_buffer_submit_block(struct iio_dma_buffer_queue *queue,
-					 struct iio_dma_buffer_block *block, int direction)
-{
-	struct dmaengine_buffer *dmaengine_buffer;
-	struct dma_async_tx_descriptor *desc;
-	dma_cookie_t cookie;
-	pr_err("Entering submit block 1\n");
-	dmaengine_buffer = iio_buffer_to_dmaengine_buffer(&block->queue->buffer);
-
-	if (direction == DMA_DEV_TO_MEM)
-		block->block.bytes_used = block->block.size;
-	block->block.bytes_used = min(block->block.bytes_used, dmaengine_buffer->max_size);
-	block->block.bytes_used = rounddown(block->block.bytes_used, dmaengine_buffer->align);
-	if (block->block.bytes_used == 0) {
-		iio_dma_buffer_block_done(block);
-		return 0;
-	}
-	pr_err("Entering submit block 2\n");
-
-	// if (block->block.flags & IIO_BUFFER_BLOCK_FLAG_CYCLIC) {
-	// 	desc = dmaengine_prep_dma_cyclic(dmaengine_buffer->chan, block->phys_addr,
-	// 					 block->block.bytes_used, block->block.bytes_used,
-	// 					 direction, 0);
-	// 	if (!desc)
-	// 		return -ENOMEM;
-	// }
-	// else
-	{
-		desc = dmaengine_prep_slave_single(dmaengine_buffer->chan, block->phys_addr,
-						   block->block.bytes_used, direction,
-						   DMA_PREP_INTERRUPT);
-		if (!desc)
-			return -ENOMEM;
-
-		desc->callback = my_iio_dmaengine_buffer_block_done;
-		desc->callback_param = block;
-	}
-	pr_err("Entering submit block 3\n");
-
-	spin_lock_irq(&dmaengine_buffer->queue.list_lock);
-	list_add_tail(&block->head, &dmaengine_buffer->active);
-	spin_unlock_irq(&dmaengine_buffer->queue.list_lock);
-
-	cookie = dmaengine_submit(desc);
-	if (dma_submit_error(cookie))
-		return dma_submit_error(cookie);
-	pr_err("Calling async issue pending\n");
-	dma_async_issue_pending(dmaengine_buffer->chan);
-
-	return 0;
-}
-
 static int hw_submit_block(struct iio_dma_buffer_queue *queue, struct iio_dma_buffer_block *block)
 {
 	pr_err("Called submit_block\n");
 	block->block.bytes_used = block->block.size;
-	//pr_err("Virtual Address of block = %p\n", &queue->buffer);
-	return my_iio_dmaengine_buffer_submit_block(queue, block, DMA_DEV_TO_MEM);
-	// return 0;
+	return iio_dmaengine_buffer_submit_block(queue, block, DMA_DEV_TO_MEM);
 }
 
 static const struct iio_dma_buffer_ops dma_buffer_ops = {
@@ -174,56 +93,6 @@ struct private_state {
 	struct iio_dev *indio_dev;
 	int foo;
 };
-
-static void callback(void *data)
-{
-	pr_err("DMA finished.  Callback executed\n");
-}
-
-static int manual_dma(struct platform_device *pdev)
-{
-	struct dma_chan *chan;
-	struct dma_async_tx_descriptor *desc;
-
-	dma_cookie_t cookie;
-	// struct iio_dma_buffer_block *block;
-	void *vaddr;
-	dma_addr_t phys_addr;
-	__u32 bytes_used = 4096;
-	struct scatterlist sg;
-	sg_init_table(&sg, 1);
-
-	vaddr = dma_alloc_coherent(&pdev->dev, PAGE_ALIGN(4096), &phys_addr, GFP_KERNEL);
-
-	pr_err("DMA addr v=%p, p=%p\n", vaddr, (void *)phys_addr);
-
-	chan = dma_request_slave_channel_reason(&pdev->dev, "rx");
-	if (IS_ERR(chan)) {
-		return PTR_ERR(chan);
-	}
-
-	// dma_map_sg(dev, sg, 1, r);
-	// _single allocates the sg list and calls device_prep_slave_sg
-	sg_dma_address(&sg) = phys_addr;
-	sg_dma_len(&sg) = 4096;
-	desc = dmaengine_prep_slave_sg(chan, &sg, 1, DMA_DEV_TO_MEM, DMA_PREP_INTERRUPT);
-	// desc = dmaengine_prep_slave_single(chan, phys_addr, bytes_used, DMA_DEV_TO_MEM,
-	// 				   DMA_PREP_INTERRUPT);
-	pr_err("Finished calling dma prep");
-	// if (!desc)
-	// 	return -ENOMEM;
-	// pr_err("Done with prep dma\n");
-	// desc->callback = callback;
-	// desc->callback_param = &cookie;
-
-	// cookie = dmaengine_submit(desc);
-	// if (dma_submit_error(cookie))
-	// 	return dma_submit_error(cookie);
-
-	// dma_async_issue_pending(chan);
-
-	return 0;
-}
 
 static int test_probe(struct platform_device *pdev)
 {
@@ -255,12 +124,6 @@ static int test_probe(struct platform_device *pdev)
 	pr_err("Address of block = %p\n", buffer);
 
 	devm_iio_device_register(&pdev->dev, indio_dev);
-
-	// 	if (iio_get_debugfs_dentry(indio_dev))
-	// 	debugfs_create_file("pseudorandom_err_check", 0644,
-	// 				iio_get_debugfs_dentry(indio_dev),
-	// 				indio_dev, &axiadc_debugfs_pncheck_fops);
-
 	return 0;
 }
 
