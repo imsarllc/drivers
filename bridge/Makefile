@@ -1,16 +1,23 @@
-obj-m += imsar.o
 obj-m += iio_test.o
 obj-m += interrupt_cdev.o
+obj-m += dma/dma-axi-dmac.o
 
 imsar-objs := bridge.o pcie_int.o pcie_cdev.o
+obj-m += imsar.o
+
+xilinx-xadc-y := xilinx-xadc-core.o xilinx-xadc-events.o
+obj-m += xilinx-xadc.o
 
 PWD := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
 #KDIR:=/lib/modules/$(shell uname -r)/build/
+
 KDIR:=/home/derrickg/src/nvidia/Tegra186_Linux_R32.5.0/Linux_for_Tegra/sources/kernel/kernel-4.9
+LOCALVERSION=-tegra-adi
+#KDIR:=/home/derrickg/src/nvidia/Jetson_Linux_R32.6.1/Linux_for_Tegra/sources/kernel/kernel-4.9
+#LOCALVERSION=-tegra
 
 ARCH=arm64
-LOCALVERSION=-tegra-adi
 CROSS_COMPILE=/opt/gcc-linaro-7.3.1-2018.05-x86_64_aarch64-linux-gnu/bin/aarch64-linux-gnu-
 
 

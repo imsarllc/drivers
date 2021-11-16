@@ -10,6 +10,8 @@
 #include <linux/platform_device.h>
 #include <linux/module.h>
 
+#define ADI_KERNEL
+
 static int test_read_raw(struct iio_dev *indio_dev, const struct iio_chan_spec *chan, int *val,
 			 int *val2, long info)
 {
@@ -77,9 +79,11 @@ static const struct iio_chan_spec test_channels[] = {
 },
 };
 
+#ifdef ADI_KERNEL
 static int hw_submit_block(struct iio_dma_buffer_queue *queue, struct iio_dma_buffer_block *block)
 {
 	pr_err("Called submit_block\n");
+
 	block->block.bytes_used = block->block.size;
 	return iio_dmaengine_buffer_submit_block(queue, block, DMA_DEV_TO_MEM);
 }
@@ -88,6 +92,7 @@ static const struct iio_dma_buffer_ops dma_buffer_ops = {
 	.submit = hw_submit_block,
 	.abort = iio_dmaengine_buffer_abort,
 };
+#endif
 
 struct private_state {
 	struct iio_dev *indio_dev;
@@ -116,7 +121,11 @@ static int test_probe(struct platform_device *pdev)
 	indio_dev->num_channels = ARRAY_SIZE(test_channels);
 	indio_dev->info = &test_info;
 
+#ifdef ADI_KERNEL
 	buffer = iio_dmaengine_buffer_alloc(&pdev->dev, "rx", &dma_buffer_ops, indio_dev);
+#else
+	buffer = iio_dmaengine_buffer_alloc(&pdev->dev, "rx");
+#endif
 	if (IS_ERR(buffer))
 		return PTR_ERR(buffer);
 	indio_dev->modes |= INDIO_BUFFER_HARDWARE;
