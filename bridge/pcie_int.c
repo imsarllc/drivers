@@ -105,7 +105,7 @@ static unsigned int get_irq(struct intc_info *local_intc)
 	if (hwirq != -1U)
 		irq = irq_find_mapping(local_intc->domain, hwirq);
 
-	pr_err("get_irq: hwirq=%d, irq=%d\n", hwirq, irq);
+	// pr_err("get_irq: hwirq=%d, irq=%d\n", hwirq, irq);
 	return irq;
 }
 
@@ -142,7 +142,7 @@ static void irq_flow_handler(struct irq_desc *desc)
 	struct intc_info *local_intc = irq_data_get_irq_handler_data(&desc->irq_data);
 
 	int irq;
-	pr_info("irq_handler called for %s: %d", desc->name, desc->irq_data.irq);
+	//pr_info("irq_handler called for %s: %d", desc->name, desc->irq_data.irq);
 
 	chained_irq_enter(chip, desc);
 
