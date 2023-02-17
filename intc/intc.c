@@ -491,9 +491,9 @@ static int intc_of_remove(struct platform_device *of_dev)
 
 static int intc_map_vfpga(struct resource *res)
 {
-	vfpga = ioremap_nocache(res->start & 0xffff0000, FPGA_REGS_SIZE);
+	vfpga = ioremap(res->start & 0xffff0000, FPGA_REGS_SIZE);
 	if (!vfpga) {
-		printk(KERN_ERR "<%s> ioremap_nocache failed\n", DEVICE_NAME);
+		printk(KERN_ERR "<%s> ioremap failed\n", DEVICE_NAME);
 		return -ENOMEM;
 	}
 	return 0;
