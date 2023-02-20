@@ -68,8 +68,8 @@ cd sources
 IMSAR drivers
 ------------
 ```
+source imsar_env.sh
 cd drivers
-export KERNEL_PATH=$(realpath ../sources/kernel/kernel-5.10)
 ./build.sh all
 ```
 
