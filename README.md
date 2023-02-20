@@ -69,7 +69,8 @@ IMSAR drivers
 ------------
 ```
 cd drivers
-make -C $(realpath ../sources/kernel/kernel-5.10) M=$PWD modules
+export KERNEL_PATH=$(realpath ../sources/kernel/kernel-5.10)
+./build.sh all
 ```
 
 Install
@@ -79,9 +80,14 @@ Linux kernel, device tree blobs
 ------------
 Assumes you have a working Xavier booting from `/boot/imsar/Image` with `/boot/imsar/tegra194-p2888-0008-p2822-0000.dtb` as the FDT
 ```
-./install.sh <hostname>
+./install.sh kernel <hostname>
 ```
 
 
 IMSAR drivers
-------------
+-------------
+
+```
+./install.sh drivers <hostname>
+```
+

@@ -1,12 +1,30 @@
 #!/usr/bin/env bash
 
-HOSTNAME=${1:?hostname required}
-DST=/boot/imsar/
+OP=$1
+HOSTNAME=${2:?hostname required}
 
 SRC_KERNEL=sources/kernel/kernel-5.10
-SRC_BOOT=$SRC_KERNEL/arch/arm64/boot
+BOOT_DST=/boot/imsar/
 
-SRC_IMAGE=$SRC_BOOT/Image
-SRC_DTB=$SRC_BOOT/dts/nvidia/tegra194-p2888-0001-p2822-0000.dtb
+case $OP in
+    "kernel")
+        SRC_BOOT=$SRC_KERNEL/arch/arm64/boot
 
-scp $SRC_IMAGE $SRC_DTB $HOSTNAME:$DST
+        SRC_IMAGE=$SRC_BOOT/Image
+        SRC_DTB=$SRC_BOOT/dts/nvidia/tegra194-p2888-0001-p2822-0000.dtb
+
+        scp $SRC_IMAGE $SRC_DTB $HOSTNAME:$BOOT_DST
+        ;;
+
+    "drivers")
+        DRIVER_DST=/usr/lib/modules/${kernel_version}/kernel/drivers/imsar/
+
+        scp drivers/*/*.ko $HOSTNAME:$DRIVER_DST
+        ssh $HOSTNAME depmod -a
+        ;;
+
+    *)
+        echo "Operation unrecognized: $OP"
+        exit 1
+        ;;
+esac
