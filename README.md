@@ -5,7 +5,9 @@ Prereqs
 APT Packages
 ------------
 
+```
 apt install build-essential
+```
 
 
 NVIDIA packages
@@ -19,11 +21,13 @@ NVIDIA packages
 
 2. Extract the archives using the following table:
 
+    ```
     Source Package Name          Archive path        Destination path
     -------------------          ------------        -----------------------
     Driver Package (BSP)         /Linux_for_Tegra    ./
     Sample Root Filesystem       /                   ./rootfs
     Bootlin Toolchain gcc 9.3    /                   ./bootlin-toolchain
+    ```
 
     Example commands:
     ```
@@ -41,7 +45,7 @@ Setup
    REMOTES=1 ./add_submodules.sh
    ```
 
-2. Install dependencies for flashing:
+2. Install dependencies for flashing (optional):
 
    ```
    sudo ./apply_binaries.sh
@@ -52,10 +56,25 @@ Setup
 Build
 =====
 
+
+Linux kernel, device tree blobs
+------------
 ```
 source imsar_env.sh
 cd sources
 ./imsar_nvbuild.sh
 ```
 
+IMSAR drivers
+------------
+```
+cd drivers
+make -C $(realpath ../sources/kernel/kernel-5.10) M=$PWD modules
+```
 
+Install
+=======
+Assumes you have a working Xavier booting from `/boot/imsar/Image` with `/boot/imsar/tegra194-p2888-0008-p2822-0000.dtb` as the FDT
+```
+./install.sh <hostname>
+```
