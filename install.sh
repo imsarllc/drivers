@@ -17,9 +17,14 @@ case $OP in
         ;;
 
     "drivers")
-        DRIVER_DST=/usr/lib/modules/${kernel_version}/kernel/drivers/imsar/
+        kernel_version=5.10.104-tegra
+        DRIVERS_DIR=/usr/lib/modules/${kernel_version}/kernel/drivers
+        IMSAR_DIR=${DRIVERS_DIR}/imsar/
 
-        scp drivers/*/*.ko $HOSTNAME:$DRIVER_DST
+        moduleFiles=$(find drivers -name '*.ko')
+        echo $moduleFiles
+        ssh $HOSTNAME bash -c "cd $DRIVERS_DIR && mkdir -p $IMSAR_DIR"
+        scp $moduleFiles $HOSTNAME:$IMSAR_DIR
         ssh $HOSTNAME depmod -a
         ;;
 

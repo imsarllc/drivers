@@ -86,7 +86,7 @@ Assumes you have a working Xavier booting from `/boot/imsar/Image` with `/boot/i
 
 IMSAR drivers
 -------------
-
+Assumes kernel version: 5.10.104-tegra
 ```
 ./install.sh drivers <hostname>
 ```
