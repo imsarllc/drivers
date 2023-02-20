@@ -7,6 +7,7 @@
 !bootlin-toolchain
 !bootloader
 !drivers
+!README.md
 !README_IMSAR.txt
 !rootfs
 !sources

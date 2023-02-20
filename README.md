@@ -1,0 +1,61 @@
+Prereqs
+=======
+
+
+APT Packages
+------------
+
+apt install build-essential
+
+
+NVIDIA packages
+---------------
+
+1. Download NVIDIA Jetson Linux support packages from https://developer.nvidia.com/embedded/jetson-linux-r3521:
+
+    * Driver Package (BSP)
+    * Sample Root Filesystem
+    * Bootlin Toolchain gcc 9.3
+
+2. Extract the archives using the following table:
+
+    Source Package Name          Archive path        Destination path
+    -------------------          ------------        -----------------------
+    Driver Package (BSP)         /Linux_for_Tegra    ./
+    Sample Root Filesystem       /                   ./rootfs
+    Bootlin Toolchain gcc 9.3    /                   ./bootlin-toolchain
+
+    Example commands:
+    ```
+    tar xf ${L4T_RELEASE_PACKAGE} --strip-components=1 Linux_for_Tegra
+    sudo tar xpf ${SAMPLE_FS_PACKAGE} -C rootfs/
+    tar xf ${BOOTLIN_TOOLCHAIN_PACKAGE} -C bootlin-toolchain
+    ```
+
+Setup
+=====
+
+1. Add submodule remotes:
+
+   ```
+   REMOTES=1 ./add_submodules.sh
+   ```
+
+2. Install dependencies for flashing:
+
+   ```
+   sudo ./apply_binaries.sh
+   sudo ./tools/l4t_flash_prerequisites.sh
+   ```
+
+
+Build
+=====
+
+```
+source imsar_env.sh
+cd sources
+./imsar_nvbuild.sh
+```
+
+
