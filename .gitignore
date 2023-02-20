@@ -1,9 +1,10 @@
-# 
+#
 # Ignore everything unless told otherwise
 /*
 !.gitignore
 !add_submodules.sh
 !imsar_env.sh
+!install.sh
 !bootlin-toolchain
 !bootloader
 !drivers

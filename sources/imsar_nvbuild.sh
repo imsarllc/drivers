@@ -86,24 +86,24 @@ function build_arm64_kernel_sources {
 	fi
 
 	"${MAKE_BIN}" -C "${source_dir}" ARCH=arm64 \
-		LOCALVERSION="-tegra-imsar" \
+		LOCALVERSION="-tegra" \
 		CROSS_COMPILE="${CROSS_COMPILE_AARCH64}" \
 		"${O_OPT[@]}" "${config_file}"
 
 	"${MAKE_BIN}" -C "${source_dir}" ARCH=arm64 \
-		LOCALVERSION="-tegra-imsar" \
+		LOCALVERSION="-tegra" \
 		CROSS_COMPILE="${CROSS_COMPILE_AARCH64}" \
 		"${O_OPT[@]}" -j"${NPROC}" \
 		--output-sync=target Image
 
 	"${MAKE_BIN}" -C "${source_dir}" ARCH=arm64 \
-		LOCALVERSION="-tegra-imsar" \
+		LOCALVERSION="-tegra" \
 		CROSS_COMPILE="${CROSS_COMPILE_AARCH64}" \
 		"${O_OPT[@]}" -j"${NPROC}" \
 		--output-sync=target dtbs
 
 	"${MAKE_BIN}" -C "${source_dir}" ARCH=arm64 \
-		LOCALVERSION="-tegra-imsar" \
+		LOCALVERSION="-tegra" \
 		CROSS_COMPILE="${CROSS_COMPILE_AARCH64}" \
 		"${O_OPT[@]}" -j"${NPROC}" \
 		--output-sync=target modules
