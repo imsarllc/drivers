@@ -42,7 +42,7 @@ fi
 if [[ ! -z "$REMOTES" ]]; then
 	# Drivers
 	pushd drivers
-	git remote set-url --push imsar git@github.com:imsarllc/drivers.git
+	git remote set-url --push origin git@github.com:imsarllc/drivers.git
 	popd
 
 	# Add kernel-5.10 remotes

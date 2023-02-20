@@ -31,9 +31,9 @@ NVIDIA packages
 
     Example commands:
     ```
-    tar xf ${L4T_RELEASE_PACKAGE} --strip-components=1 Linux_for_Tegra
-    sudo tar xpf ${SAMPLE_FS_PACKAGE} -C rootfs/
-    tar xf ${BOOTLIN_TOOLCHAIN_PACKAGE} -C bootlin-toolchain
+    tar xf Jetson_Linux_R35.2.1_aarch64.tbz2 --strip-components=1 Linux_for_Tegra
+    sudo tar xpf Tegra_Linux_Sample-Root-Filesystem_R35.2.1_aarch64.tbz2 -C rootfs/
+    tar xf toolchain-sources_toolchains.bootlin.com-2020.08-1.tar.bz2 -C bootlin-toolchain
     ```
 
 Setup
