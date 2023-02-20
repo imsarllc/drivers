@@ -1,0 +1,111 @@
+[submodule "drivers"]
+	path = drivers
+	url = https://github.com/imsarllc/drivers.git
+[submodule "sources/kernel/nvgpu"]
+	path = sources/kernel/nvgpu
+	url = git://nv-tegra.nvidia.com/linux-nvgpu.git
+[submodule "sources/kernel/nvidia"]
+	path = sources/kernel/nvidia
+	url = git://nv-tegra.nvidia.com/linux-nvidia.git
+[submodule "sources/kernel/kernel-5.10"]
+	path = sources/kernel/kernel-5.10
+	url = https://github.com/imsarllc/linux-xlnx.git
+[submodule "sources/hardware/nvidia/platform/t23x/p3768/kernel-dts"]
+	path = sources/hardware/nvidia/platform/t23x/p3768/kernel-dts
+	url = git://nv-tegra.nvidia.com/device/hardware/nvidia/platform/t23x/p3768-dts.git
+[submodule "sources/hardware/nvidia/platform/t23x/concord/kernel-dts"]
+	path = sources/hardware/nvidia/platform/t23x/concord/kernel-dts
+	url = git://nv-tegra.nvidia.com/device/hardware/nvidia/platform/t23x/concord-dts.git
+[submodule "sources/hardware/nvidia/platform/t23x/common/kernel-dts"]
+	path = sources/hardware/nvidia/platform/t23x/common/kernel-dts
+	url = git://nv-tegra.nvidia.com/device/hardware/nvidia/platform/t23x/common-dts.git
+[submodule "sources/hardware/nvidia/platform/t19x/mccoy/kernel-dts"]
+	path = sources/hardware/nvidia/platform/t19x/mccoy/kernel-dts
+	url = git://nv-tegra.nvidia.com/device/hardware/nvidia/platform/t19x/mccoy-dts.git
+[submodule "sources/hardware/nvidia/platform/t19x/jakku/kernel-dts"]
+	path = sources/hardware/nvidia/platform/t19x/jakku/kernel-dts
+	url = git://nv-tegra.nvidia.com/device/hardware/nvidia/platform/t19x/jakku-dts.git
+[submodule "sources/hardware/nvidia/platform/t19x/galen-industrial/kernel-dts"]
+	path = sources/hardware/nvidia/platform/t19x/galen-industrial/kernel-dts
+	url = git://nv-tegra.nvidia.com/device/hardware/nvidia/platform/t19x/galen-industrial-dts.git
+[submodule "sources/hardware/nvidia/platform/t19x/common"]
+	path = sources/hardware/nvidia/platform/t19x/common
+	url = git://nv-tegra.nvidia.com/device/hardware/nvidia/platform/t19x/common.git
+[submodule "sources/hardware/nvidia/platform/t19x/galen/kernel-dts"]
+	path = sources/hardware/nvidia/platform/t19x/galen/kernel-dts
+	url = git@gitlabee.imsar.us:firmware/stardust-dts.git
+[submodule "sources/hardware/nvidia/platform/tegra/common"]
+	path = sources/hardware/nvidia/platform/tegra/common
+	url = git://nv-tegra.nvidia.com/device/hardware/nvidia/platform/tegra/common.git
+[submodule "sources/hardware/nvidia/soc/t23x"]
+	path = sources/hardware/nvidia/soc/t23x
+	url = git://nv-tegra.nvidia.com/device/hardware/nvidia/soc/t23x.git
+[submodule "sources/hardware/nvidia/soc/t19x"]
+	path = sources/hardware/nvidia/soc/t19x
+	url = git://nv-tegra.nvidia.com/device/hardware/nvidia/soc/t19x.git
+[submodule "sources/hardware/nvidia/soc/tegra"]
+	path = sources/hardware/nvidia/soc/tegra
+	url = git://nv-tegra.nvidia.com/device/hardware/nvidia/soc/tegra.git
+[submodule "sources/3rdparty/libnl/3.5.0"]
+	path = sources/3rdparty/libnl/3.5.0
+	url = git://nv-tegra.nvidia.com/3rdparty/libnl/3.5.0.git
+[submodule "sources/3rdparty/dtc"]
+	path = sources/3rdparty/dtc
+	url = git://nv-tegra.nvidia.com/3rdparty/dtc.git
+[submodule "sources/tegra/cuda-src/nvsample_cudaprocess"]
+	path = sources/tegra/cuda-src/nvsample_cudaprocess
+	url = git://nv-tegra.nvidia.com/tegra/cuda-src/nvsample_cudaprocess.git
+[submodule "sources/tegra/gst-src/gst-nvarguscamera"]
+	path = sources/tegra/gst-src/gst-nvarguscamera
+	url = git://nv-tegra.nvidia.com/tegra/gst-src/gst-nvarguscamera.git
+[submodule "sources/tegra/gst-src/gst-nvvideo4linux2"]
+	path = sources/tegra/gst-src/gst-nvvideo4linux2
+	url = git://nv-tegra.nvidia.com/tegra/gst-src/gst-nvvideo4linux2.git
+[submodule "sources/tegra/gst-src/libgstnvvideosinks"]
+	path = sources/tegra/gst-src/libgstnvvideosinks
+	url = git://nv-tegra.nvidia.com/tegra/gst-src/libgstnvvideosinks.git
+[submodule "sources/tegra/gst-src/gst-nvcompositor"]
+	path = sources/tegra/gst-src/gst-nvcompositor
+	url = git://nv-tegra.nvidia.com/tegra/gst-src/gst-nvcompositor.git
+[submodule "sources/tegra/gst-src/gst-nvv4l2camera"]
+	path = sources/tegra/gst-src/gst-nvv4l2camera
+	url = git://nv-tegra.nvidia.com/tegra/gst-src/gst-nvv4l2camera.git
+[submodule "sources/tegra/gst-src/libgstnvdrmvideosink"]
+	path = sources/tegra/gst-src/libgstnvdrmvideosink
+	url = git://nv-tegra.nvidia.com/tegra/gst-src/libgstnvdrmvideosink.git
+[submodule "sources/tegra/gst-src/libnvgstreamer"]
+	path = sources/tegra/gst-src/libnvgstreamer
+	url = git://nv-tegra.nvidia.com/tegra/gst-src/libnvgstreamer.git
+[submodule "sources/tegra/gst-src/gst-nvvidconv"]
+	path = sources/tegra/gst-src/gst-nvvidconv
+	url = git://nv-tegra.nvidia.com/tegra/gst-src/gst-nvvidconv.git
+[submodule "sources/tegra/gst-src/gst-jpeg"]
+	path = sources/tegra/gst-src/gst-jpeg
+	url = git://nv-tegra.nvidia.com/tegra/gst-src/gst-jpeg.git
+[submodule "sources/tegra/gst-src/nvgstapps"]
+	path = sources/tegra/gst-src/nvgstapps
+	url = git://nv-tegra.nvidia.com/tegra/gst-src/nvgstapps.git
+[submodule "sources/tegra/gst-src/gst-egl"]
+	path = sources/tegra/gst-src/gst-egl
+	url = git://nv-tegra.nvidia.com/tegra/gst-src/gst-egl.git
+[submodule "sources/tegra/gst-src/gst-nvtee"]
+	path = sources/tegra/gst-src/gst-nvtee
+	url = git://nv-tegra.nvidia.com/tegra/gst-src/gst-nvtee.git
+[submodule "sources/tegra/nv-sci-src/nvsci_headers"]
+	path = sources/tegra/nv-sci-src/nvsci_headers
+	url = git://nv-tegra.nvidia.com/tegra/nv-sci-src/nvsci_headers.git
+[submodule "sources/tegra/kernel-src/nv-kernel-display-driver"]
+	path = sources/tegra/kernel-src/nv-kernel-display-driver
+	url = git://nv-tegra.nvidia.com/tegra/kernel-src/nv-kernel-display-driver.git
+[submodule "sources/tegra/v4l2-src/v4l2_libs"]
+	path = sources/tegra/v4l2-src/v4l2_libs
+	url = git://nv-tegra.nvidia.com/tegra/v4l2-src/v4l2_libs.git
+[submodule "sources/tegra/gfx-src/nv-xconfig"]
+	path = sources/tegra/gfx-src/nv-xconfig
+	url = git://nv-tegra.nvidia.com/tegra/gfx-src/nv-xconfig.git
+[submodule "sources/tegra/optee-src/nv-optee"]
+	path = sources/tegra/optee-src/nv-optee
+	url = git://nv-tegra.nvidia.com/tegra/optee-src/nv-optee.git
+[submodule "sources/tegra/optee-src/atf"]
+	path = sources/tegra/optee-src/atf
+	url = git://nv-tegra.nvidia.com/tegra/optee-src/atf.git

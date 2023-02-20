@@ -1,0 +1,13 @@
+# 
+# Ignore everything unless told otherwise
+/*
+!.gitignore
+!add_submodules.sh
+!imsar_env.sh
+!bootlin-toolchain
+!bootloader
+!drivers
+!README_IMSAR.txt
+!rootfs
+!sources
+
