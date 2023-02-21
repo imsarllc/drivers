@@ -33,7 +33,7 @@ NVIDIA packages
     ```
     tar xf Jetson_Linux_R35.2.1_aarch64.tbz2 --strip-components=1 Linux_for_Tegra
     sudo tar xpf Tegra_Linux_Sample-Root-Filesystem_R35.2.1_aarch64.tbz2 -C rootfs/
-    tar xf toolchain-sources_toolchains.bootlin.com-2020.08-1.tar.bz2 -C bootlin-toolchain
+    tar xf aarch64--glibc--stable-final.tar.gz -C bootlin-toolchain
     ```
 
 Setup
@@ -43,6 +43,7 @@ Setup
 
    ```
    REMOTES=1 ./add_submodules.sh
+   git submodule update --init --recursive
    ```
 
 2. Install dependencies for flashing (optional):
