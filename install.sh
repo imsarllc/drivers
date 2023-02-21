@@ -18,7 +18,9 @@ case $OP in
         scp $SRC_IMAGE $SRC_DTB $HOSTNAME:$BOOT_DST
 
         # Kernel modules
-        rsync -a --progress --stats sources/modules/lib/modules/${KERNEL_VERSION}/* $HOSTNAME:/lib/modules/${KERNEL_VERSION}/
+        # rsync -a --progress --stats \
+        #     sources/modules/lib/modules/${KERNEL_VERSION}/* \
+        #     $HOSTNAME:/lib/modules/${KERNEL_VERSION}/
         ;;
 
     "drivers")
