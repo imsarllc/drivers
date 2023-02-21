@@ -2,8 +2,9 @@
 # Ignore everything unless told otherwise
 /*
 !.gitignore
-!add_submodules.sh
+!add_remotes.sh
 !imsar_env.sh
+!imsar_source_sync.sh
 !install.sh
 !bootlin-toolchain
 !bootloader

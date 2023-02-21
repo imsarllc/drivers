@@ -39,11 +39,12 @@ NVIDIA packages
 Setup
 =====
 
-1. Add submodule remotes:
+1. Add submodules and their remotes:
 
    ```
    git submodule update --init --recursive
-   REMOTES=1 ./add_submodules.sh
+   ./imsar_sources_sync.sh
+   ./add_remotes.sh
    ```
 
 2. Install dependencies for flashing (optional):
