@@ -1,1 +1,5 @@
+kernel
+modules
+hardware
+tegra
 nvbuild.sh
