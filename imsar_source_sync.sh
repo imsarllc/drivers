@@ -109,7 +109,7 @@ function DownloadAndSync {
 	git fetch --all
 
 	echo "Syncing up with tag $TAG..."
-	git checkout -B my_$TAG $TAG
+	git checkout $TAG
 	if [[ $? -eq 0 ]]; then
 		echo "$WHAT_SOURCE source sync'ed to tag $TAG successfully."
 	else
