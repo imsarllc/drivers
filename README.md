@@ -50,9 +50,12 @@ Setup
 2. Install dependencies for flashing (optional):
 
    ```
+   sudo ln -s /usr/bin/python{3,}
    sudo ./apply_binaries.sh
    sudo ./tools/l4t_flash_prerequisites.sh
    ```
+
+   NOTE: l4t_flash_prerequisites.sh needs to have `python` changed to `python3`
 
 
 Build
