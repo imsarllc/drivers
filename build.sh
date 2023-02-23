@@ -3,7 +3,7 @@ CROSS_COMPILE=${CROSS_COMPILE:?CROSS_COMPILE environment variable required}
 DRIVER=$1
 
 if [[ $# -lt 1 ]]; then
-    echo "Usage: $0 <all|driver_name> [clean]"
+    echo "Usage: $0 <all|driver_name> [clean|install]"
     echo "Example: $0 all"
     echo "Example: $0 uio"
     exit 1
@@ -19,6 +19,10 @@ fi
 case "$2" in
     clean)
         make -C $KERNEL_PATH M=$PWD/$DRIVER clean
+        ;;
+
+    install)
+        make -C $KERNEL_PATH M=$PWD/$DRIVER modules_install
         ;;
 
     *)

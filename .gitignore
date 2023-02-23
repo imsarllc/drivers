@@ -1,6 +1,7 @@
 *.ko
 *.o*
 *.mod.*
+*.mod
 *.cmd
 build
 version.h
