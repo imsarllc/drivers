@@ -80,7 +80,7 @@ case $OP in
         if [[ $ROOTFS -eq 1 ]]; then
             section "Copying kernel modules to rootfs"
             sudo cp -Rf \
-                ${KERNEL_MOD_PATH}/lib/modules/${KERNEL_VERSION}/* \
+                ${KERNEL_MOD_PATH}/lib/modules/${KERNEL_VERSION}/{kernel,extra,modules*} \
                 $DEST/usr/lib/modules/${KERNEL_VERSION}
 
             section "Running depmod on rootfs"
@@ -89,7 +89,7 @@ case $OP in
             # This file is used by flash.sh for the kernel modules
             section "Creating kernel_supplements.tgz2 for flashing rootfs"
             sudo rm -f kernel/kernel_supplements-new.tbz2
-            sudo tar --owner root --group root -cjf kernel/kernel_supplements-new.tbz2 -C $DEST lib/modules/${KERNEL_VERSION}
+            sudo tar --owner root --group root -cjf kernel/kernel_supplements-new.tbz2 -C $DEST lib/modules/${KERNEL_VERSION}/{kernel,extra,modules*}
             sudo cp kernel/kernel_supplements{,-$(date +%Y%m%d%H%M)}.tbz2
             sudo cp kernel/kernel_supplements{-new,}.tbz2
         else
