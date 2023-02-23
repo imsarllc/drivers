@@ -63,39 +63,47 @@ Build
 =====
 
 
-Linux kernel, device tree blobs
-------------
-```
-source imsar_env.sh
-cd sources
-./imsar_nvbuild.sh
-```
+1. Linux kernel, device tree blobs
+    ```
+    source imsar_env.sh
+    cd sources
+    ./imsar_nvbuild.sh -o kernel_out
+    ```
 
-IMSAR drivers
-------------
-```
-source imsar_env.sh
-cd drivers
-./build.sh all
-```
+2. NVIDIA display drivers
+    ```
+    source imsar_env.sh
+
+    make -C sources/tegra/kernel-src/nv-kernel-display-driver/NVIDIA-kernel-module-source-TempVersion -j$(nproc) SYSSRC="${KERNEL_SRC_PATH}" SYSOUT="${KERNEL_OUT_PATH}" modules modules_install
+    ```
+
+3. IMSAR drivers
+    ```
+    source imsar_env.sh
+    cd drivers
+    ./build.sh all
+    ```
 
 Install
 =======
 
-You can install to the ./rootfs folder for flashing, or you can install to a remote system.
+You can install in two different ways. The first method is to the ./rootfs folder and then use the NVIDIA flash.sh script to completely re-flash the Xavier. Alternatively, you can install it to a remote system via ssh/scp/rsync (with some limitations).
 
-Assumes you have a working Xavier booting from `/boot/imsar/Image` with `/boot/imsar/tegra194-p2888-0008-p2822-0000.dtb` as the FDT
+Both methods assume you have or will have a working Xavier booting from `/boot/imsar/Image` with `/boot/imsar/tegra194-p2888-0008-p2822-0000.dtb` as the FDT. This can be
+configured under `/boot/extlinux/extlinux.conf`. When using UEFI (which r35.2.1 does
+by default), make sure to set the boot order to use eMMC first.
 
-Install to rootfs folder and flash
------------------------------------
+
+Method 1: Install to ./rootfs and use flash.sh
+----------------------------------------------
 ```
 ./install.sh kernel rootfs
 ./install.sh drivers rootfs
 sudo ./flash.sh jetson-agx-xavier-devkit internal
 ```
 
-Install to remote system
-------------------------
+Method 2: Install to remote system via ssh/scp/rsync
+----------------------------------
 NOTE: You can only install the kernel to a remote system if it is running a different
 kernel version. This is because you cannot install the kernel modules for a kernel that is currently running.
 

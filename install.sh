@@ -81,7 +81,7 @@ case $OP in
         if [[ $ROOTFS -eq 1 ]]; then
             section "Copying kernel modules to rootfs"
             sudo cp -Rf \
-                sources/modules/lib/modules/${KERNEL_VERSION}/* \
+                ${KERNEL_MOD_PATH}/lib/modules/${KERNEL_VERSION}/* \
                 $DEST/usr/lib/modules/${KERNEL_VERSION}
 
             section "Running depmod on rootfs"
@@ -96,7 +96,7 @@ case $OP in
         else
             section "Copying kernel modules to remote host"
             sudo rsync -a --progress \
-                sources/modules/lib/modules/${KERNEL_VERSION}/* \
+                ${KERNEL_MOD_PATH}/lib/modules/${KERNEL_VERSION}/* \
                 $DEST:$MOD_DIR
 
             section "Running depmod on remote host"

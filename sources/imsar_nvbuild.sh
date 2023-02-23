@@ -108,6 +108,16 @@ function build_arm64_kernel_sources {
 		"${O_OPT[@]}" -j"${NPROC}" \
 		--output-sync=target modules
 
+	####################
+	# Added for imsar
+	####################
+	"${MAKE_BIN}" -C "${source_dir}" ARCH=arm64 \
+		LOCALVERSION="-tegra" \
+		CROSS_COMPILE="${CROSS_COMPILE_AARCH64}" \
+		"${O_OPT[@]}" -j"${NPROC}" \
+		--output-sync=target modules_install
+	####################
+
 	image="${tegra_kernel_out}/arch/arm64/boot/Image"
 	if [ ! -f "${image}" ]; then
 		echo "Error: Missing kernel image ${image}"
