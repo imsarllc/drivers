@@ -62,26 +62,28 @@ Setup
 Build
 =====
 
-
-1. Linux kernel, device tree blobs
+1. Set required environment variables
     ```
     source imsar_env.sh
+    ```
+
+2. Linux kernel, device tree blobs
+    ```
     cd sources
-    ./imsar_nvbuild.sh -o kernel_out
+    ./imsar_nvbuild.sh -o ${KERNEL_OUT_PATH}
     ```
 
-2. NVIDIA display drivers
+3. NVIDIA display drivers
     ```
-    source imsar_env.sh
-
     make -C sources/tegra/kernel-src/nv-kernel-display-driver/NVIDIA-kernel-module-source-TempVersion -j$(nproc) SYSSRC="${KERNEL_SRC_PATH}" SYSOUT="${KERNEL_OUT_PATH}" modules modules_install
     ```
 
-3. IMSAR drivers
+4. IMSAR drivers
     ```
-    source imsar_env.sh
     cd drivers
+    export KERNEL_PATH=$KERNEL_OUT_PATH
     ./build.sh all
+    ./build.sh all install
     ```
 
 Install
@@ -98,7 +100,6 @@ Method 1: Install to ./rootfs and use flash.sh
 ----------------------------------------------
 ```
 ./install.sh kernel rootfs
-./install.sh drivers rootfs
 sudo ./flash.sh jetson-agx-xavier-devkit internal
 ```
 
@@ -109,5 +110,4 @@ kernel version. This is because you cannot install the kernel modules for a kern
 
 ```
 ./install.sh kernel <hostname>
-./install.sh drivers <hostname>
 ```
