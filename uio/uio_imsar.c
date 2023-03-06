@@ -111,11 +111,8 @@ static int mmdev_probe(struct platform_device *pdev)
 
 	mmdev->info.version = GIT_DESCRIBE;
 
-	irq = platform_get_irq(pdev, 0);
-	if(irq < 0) {
-		dev_err(&pdev->dev, "unable to get irq\n");
-		ret = irq;
-	} else {
+	irq = platform_get_irq_optional(pdev, 0);
+	if(irq >= 0) {
 		mmdev->info.irq = irq;
 		mmdev->info.handler = mmdev_handler;
 		mmdev->info.priv = mmdev;
