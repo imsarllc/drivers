@@ -40,7 +40,7 @@ static ssize_t intc_write(struct file *f, const char __user *buf, size_t bytes, 
 	int ii = iminor(f->f_inode);
 	intc_file_t* file_data = (intc_file_t*)f->private_data;
 
-	printk(KERN_DEBUG "<%s> file: write() %d\n", DEVICE_NAME, ii);
+	PRINTK_COND(KERN_DEBUG "<%s> file: write() %d\n", DEVICE_NAME, ii);
 
 	// free if necessary
 	intc_addr_data_free(file_data);
@@ -68,7 +68,7 @@ static ssize_t intc_read(struct file *f, char __user * buf, size_t bytes, loff_t
 
 	ii = iminor(f->f_inode);
 
-	printk(KERN_DEBUG "<%s> file: read()  %d\n", DEVICE_NAME, ii);
+	PRINTK_COND(KERN_DEBUG "<%s> file: read()  %d\n", DEVICE_NAME, ii);
 
 	if (f->f_flags & O_NONBLOCK) {
 		if (!fid[ii].valid)
@@ -167,7 +167,7 @@ static long intc_ioctl(struct file *f, unsigned int request, unsigned long arg)
 	ii = iminor(f->f_inode);
 	switch(request) {
 	case INTC_INT_COUNT: {
-		printk(KERN_INFO "<%s> file: ioctl() %d, interrupt count:%ld\n", DEVICE_NAME, ii, fid[ii].count);
+		PRINTK_COND(KERN_INFO "<%s> file: ioctl() %d, interrupt count:%ld\n", DEVICE_NAME, ii, fid[ii].count);
 		ret = fid[ii].count;
 		break;
 	}
@@ -176,7 +176,7 @@ static long intc_ioctl(struct file *f, unsigned int request, unsigned long arg)
 		if (copy_from_user((void *)&enable, (const void __user *)arg, sizeof(int)))
 			return -EFAULT;
 
-		printk(KERN_INFO "<%s> file: ioctl() %d, enable:%d\n", DEVICE_NAME, ii, enable);
+		PRINTK_COND(KERN_INFO "<%s> file: ioctl() %d, enable:%d\n", DEVICE_NAME, ii, enable);
 		ret = intc_enable(ii, enable);
 		break;
 	}
@@ -185,7 +185,7 @@ static long intc_ioctl(struct file *f, unsigned int request, unsigned long arg)
 		if (copy_from_user((void *)&milliseconds, (const void __user *)arg, sizeof(int)))
 			return -EFAULT;
 
-		printk(KERN_INFO "<%s> file: ioctl() %d, timeout:%d\n", DEVICE_NAME, ii, milliseconds);
+		PRINTK_COND(KERN_INFO "<%s> file: ioctl() %d, timeout:%d\n", DEVICE_NAME, ii, milliseconds);
 		file_data->timeout = (milliseconds * HZ) / 1000;
 		break;
 	}
@@ -194,7 +194,7 @@ static long intc_ioctl(struct file *f, unsigned int request, unsigned long arg)
 		ret = -EINVAL;
 		break;
 	default:
-		printk(KERN_ERR "<%s> file: ioctl() %d, unrecognized request %d\n", DEVICE_NAME, ii, request);
+		PRINTK_COND(KERN_ERR "<%s> file: ioctl() %d, unrecognized request %d\n", DEVICE_NAME, ii, request);
 		ret = -EINVAL;
 		break;
 	}
@@ -218,7 +218,7 @@ static int intc_open(struct inode *inode, struct file *f)
 	file_data->timeout = fid[ii].default_timeout;
 
 	open_files++;
-	printk(KERN_DEBUG "<%s> file: open()  %d (%d opened)\n", DEVICE_NAME, ii, open_files);
+	PRINTK_COND(KERN_DEBUG "<%s> file: open()  %d (%d opened)\n", DEVICE_NAME, ii, open_files);
 
 	return intc_enable(ii, 1);
 }
@@ -232,7 +232,7 @@ static int intc_close(struct inode *inode, struct file *f)
 	intc_addr_data_free((intc_file_t*)f->private_data);
 	kfree(f->private_data);
 
-	printk(KERN_DEBUG "<%s> file: close() %d (%d opened)\n", DEVICE_NAME, ii, open_files);
+	PRINTK_COND(KERN_DEBUG "<%s> file: close() %d (%d opened)\n", DEVICE_NAME, ii, open_files);
 
 	return 0;
 }
@@ -369,7 +369,7 @@ static int intc_of_remove(struct platform_device *of_dev)
 	}
 	class_destroy(cl);
 	unregister_chrdev_region(dev, INTC_IRQ_COUNT);
-	printk(KERN_DEBUG "<%s> exit: unregistered\n", DEVICE_NAME);
+	PRINTK_COND(KERN_DEBUG "<%s> exit: unregistered\n", DEVICE_NAME);
 
 	free_irq(irqnum, NULL);
 	irqnum = 0;
@@ -403,7 +403,7 @@ static int intc_of_probe(struct platform_device *ofdev)
 	}
 
 	irq = res->start;
-	printk(KERN_INFO "<%s> probe: IRQ read from DTS entry as %d\n", DEVICE_NAME, irq);
+	PRINTK_COND(KERN_INFO "<%s> probe: IRQ read from DTS entry as %d\n", DEVICE_NAME, irq);
 	ret = intc_irq_init(irq);
 	if (ret != 0)
 		return ret;
@@ -411,7 +411,7 @@ static int intc_of_probe(struct platform_device *ofdev)
 	res = platform_get_resource(ofdev, IORESOURCE_MEM, 0);
 	size = resource_size(res);
 #if DEBUG
-	printk(KERN_INFO "<%s> probe: register physical base address = %x\n", DEVICE_NAME, res->start);
+	PRINTK_COND(KERN_INFO "<%s> probe: register physical base address = %x\n", DEVICE_NAME, res->start);
 #endif
 
 	vbase = of_iomap(ofdev->dev.of_node, 0);
@@ -450,14 +450,14 @@ static int intc_of_probe(struct platform_device *ofdev)
 			dev_info(&ofdev->dev, "no property reg for child of FPGA interrupt controller\n");
 		} else {
 			fid[index].name = child->name;
-			printk(KERN_INFO "interrupt #%d = %s\n", index, child->name);
+			PRINTK_COND(KERN_INFO "interrupt #%d = %s\n", index, child->name);
 		}
 
 		ret = of_property_read_u32(child, "timeout_ms", &milliseconds);
 		if (ret < 0) {
 			dev_info(&ofdev->dev, "no property timeout for child of FPGA interrupt controller\n");
 		} else {
-			printk(KERN_INFO "interrupt #%d timeout = %d\n", index, milliseconds);
+			PRINTK_COND(KERN_INFO "interrupt #%d timeout = %d\n", index, milliseconds);
 			fid[index].default_timeout = (milliseconds * HZ) / 1000;
 		}
 
@@ -465,7 +465,7 @@ static int intc_of_probe(struct platform_device *ofdev)
 
 	intc_reset();
 
-	printk(KERN_INFO "<%s> init: registered\n", DEVICE_NAME);
+	PRINTK_COND(KERN_INFO "<%s> init: registered\n", DEVICE_NAME);
 
 	return 0;
 }

@@ -19,6 +19,8 @@
 #define HZ 1
 #endif
 
+// #define DEBUG
+
 #define FPGA_REGS_SIZE      0x00010000
 #define INTC_IRQ_COUNT      16
 #define INTC_EN_OFFSET      0x0000
@@ -29,25 +31,33 @@
 #define INTC_ADDR_MASK      0x0fff
 #define INTC_DATA_INVALID   0xbeef
 
-// macros
-#define DEBUG 0
 #define DEVICE_NAME  "intc"
 
+#define DEBUG 0
+
 #if DEBUG
-#define intc_reg_write(addr, data) \
-	{ \
-		iowrite16((data), vbase + (addr) * 4); \
-		printk(KERN_DEBUG "<%s> wr addr:%04x data:%04x\n", DEVICE_NAME, addr, data); \
-	}
-#define intc_reg_read(data, addr) \
-	{ \
-		data = ioread16(vbase + (addr) * 4); \
-		printk(KERN_DEBUG "<%s> rd addr:%04x data:%04x\n", DEVICE_NAME, addr, data); \
-	}
+#define PRINTK_COND(...) printk(__VA_ARGS__)
 #else
+#define PRINTK_COND(...)
+#endif
+
+// Note: this is broken and I'm not going to fix it right now
+// #if DEBUG
+// #define intc_reg_write(addr, data) \
+// 	{ \
+// 		iowrite16((data), vbase + (addr) * 4); \
+// 		printk(KERN_DEBUG "<%s> wr addr:%04x data:%04x\n", DEVICE_NAME, addr, data); \
+// 	}
+// #define intc_reg_read(data, addr) \
+// 	{ \
+// 		data = ioread16(vbase + (addr) * 4); \
+// 		printk(KERN_DEBUG "<%s> rd addr:%04x data:%04x\n", DEVICE_NAME, addr, data); \
+// 		data
+// 	}
+// #else
 #define intc_reg_write(addr, data)  iowrite16((data), vbase + (addr) * 4)
 #define intc_reg_read(data, addr)   data = ioread16(vbase + (addr) * 4)
-#endif // DEBUG
+// #endif // DEBUG
 #define fpga_reg_read(addr)         ioread16(vfpga + (addr) * 4);
 
 typedef struct {
@@ -147,7 +157,7 @@ static ssize_t intc_write(struct file *f, const char __user *buf, size_t bytes, 
 	int ii = iminor(f->f_inode);
 	intc_file_t* file_data = (intc_file_t*)f->private_data;
 
-	printk(KERN_DEBUG "<%s> file: write() %d\n", DEVICE_NAME, ii);
+	PRINTK_COND(KERN_DEBUG "<%s> file: write() %d\n", DEVICE_NAME, ii);
 
 	// free if necessary
 	intc_addr_data_free(file_data);
@@ -175,7 +185,7 @@ static ssize_t intc_read(struct file *f, char __user * buf, size_t bytes, loff_t
 
 	ii = iminor(f->f_inode);
 
-	printk(KERN_DEBUG "<%s> file: read()  %d\n", DEVICE_NAME, ii);
+	PRINTK_COND(KERN_DEBUG "<%s> file: read()  %d\n", DEVICE_NAME, ii);
 
 	if (f->f_flags & O_NONBLOCK) {
 		if (!fid[ii].valid)
@@ -279,7 +289,7 @@ static long intc_ioctl(struct file *f, unsigned int request, unsigned long arg)
 	ii = iminor(f->f_inode);
 	switch(request) {
 	case INTC_INT_COUNT: {
-		printk(KERN_INFO "<%s> file: ioctl() %d, interrupt count:%ld\n", DEVICE_NAME, ii, fid[ii].count);
+		PRINTK_COND(KERN_INFO "<%s> file: ioctl() %d, interrupt count:%ld\n", DEVICE_NAME, ii, fid[ii].count);
 		ret = fid[ii].count;
 		break;
 	}
@@ -288,7 +298,7 @@ static long intc_ioctl(struct file *f, unsigned int request, unsigned long arg)
 		if (copy_from_user((void *)&enable, (const void __user *)arg, sizeof(int)))
 			return -EFAULT;
 
-		printk(KERN_INFO "<%s> file: ioctl() %d, enable:%d\n", DEVICE_NAME, ii, enable);
+		PRINTK_COND(KERN_INFO "<%s> file: ioctl() %d, enable:%d\n", DEVICE_NAME, ii, enable);
 		ret = intc_enable(ii, enable);
 		break;
 	}
@@ -297,16 +307,16 @@ static long intc_ioctl(struct file *f, unsigned int request, unsigned long arg)
 		if (copy_from_user((void *)&milliseconds, (const void __user *)arg, sizeof(int)))
 			return -EFAULT;
 
-		printk(KERN_INFO "<%s> file: ioctl() %d, timeout:%d\n", DEVICE_NAME, ii, milliseconds);
+		PRINTK_COND(KERN_INFO "<%s> file: ioctl() %d, timeout:%d\n", DEVICE_NAME, ii, milliseconds);
 		file_data->timeout = (milliseconds * HZ) / 1000;
 		break;
 	}
 	case TCGETS:
-		//Silently igore terminal commands
+		//Silently ignore terminal commands
 		ret = -EINVAL;
 		break;
 	default:
-		printk(KERN_ERR "<%s> file: ioctl() %d, unrecognized request %d\n", DEVICE_NAME, ii, request);
+		PRINTK_COND(KERN_ERR "<%s> file: ioctl() %d, unrecognized request %d\n", DEVICE_NAME, ii, request);
 		ret = -EINVAL;
 		break;
 	}
@@ -330,7 +340,7 @@ static int intc_open(struct inode *inode, struct file *f)
 	file_data->timeout = fid[ii].default_timeout;
 
 	open_files++;
-	printk(KERN_DEBUG "<%s> file: open()  %d (%d opened)\n", DEVICE_NAME, ii, open_files);
+	PRINTK_COND(KERN_DEBUG "<%s> file: open()  %d (%d opened)\n", DEVICE_NAME, ii, open_files);
 
 	return intc_enable(ii, 1);
 }
@@ -344,7 +354,7 @@ static int intc_close(struct inode *inode, struct file *f)
 	intc_addr_data_free((intc_file_t*)f->private_data);
 	kfree(f->private_data);
 
-	printk(KERN_DEBUG "<%s> file: close() %d (%d opened)\n", DEVICE_NAME, ii, open_files);
+	PRINTK_COND(KERN_DEBUG "<%s> file: close() %d (%d opened)\n", DEVICE_NAME, ii, open_files);
 
 	return 0;
 }
