@@ -99,12 +99,15 @@ by default), make sure to set the boot order to use eMMC first.
 Method 1: Install to ./rootfs and use flash.sh
 ----------------------------------------------
 ```
+source imsar_env.sh
 ./install.sh kernel rootfs
 sudo ./flash.sh jetson-agx-xavier-devkit internal
 ```
 
 Method 2: Install to remote system via ssh/scp/rsync
 ----------------------------------
+************** Currently unsupported for updating the device tree **************
+
 NOTE: You can only install the kernel to a remote system if it is running a different
 kernel version. This is because you cannot install the kernel modules for a kernel that is currently running.
 

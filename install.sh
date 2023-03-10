@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+trap 'exit 1' INT
+
 if [[ $# -lt 2 ]]; then
     echo "Usage: $0 <kernel|drivers> <rootfs|hostname>"
     echo "Example for rootfs: $0 kernel rootfs"
@@ -46,8 +48,6 @@ case $OP in
     "kernel")
         # Image and Device Tree
         SRC_BOOT=$KERNEL_OUT_PATH/arch/arm64/boot
-        SRC_IMAGE=$SRC_BOOT/Image
-        SRC_DTB=$SRC_BOOT/dts/nvidia/tegra194-p2888-0001-p2822-0000.dtb
 
         if [[ $ROOTFS -eq 0 ]]; then
             remote_version=$(ssh $DEST uname -r)
@@ -63,16 +63,23 @@ case $OP in
         fi
 
         if [[ $ROOTFS -eq 1 ]]; then
-            section "Copying Image and DTB to rootfs"
+            section "Copying Image and DTB to ./kernel/dtb/"
+            rm -f kernel/dtb/*
             sudo cp -f \
-                $SRC_IMAGE \
-                $SRC_DTB \
-                $DEST$BOOT_DST
+                $SRC_BOOT/Image \
+                $SRC_BOOT/dts/nvidia/* \
+                kernel/dtb/
+
+            section "Copying Image and DTB to ./rootfs"
+            sudo cp -f \
+                $SRC_BOOT/Image \
+                $SRC_BOOT/dts/nvidia/* \
+                $DEST/
         else
             section "Copying Image and DTB to remote host"
             scp \
-                $SRC_IMAGE \
-                $SRC_DTB \
+                $SRC_BOOT/Image \
+                $SRC_BOOT/dts/nvidia/* \
                 $DEST:$BOOT_DST
         fi
 
@@ -80,7 +87,7 @@ case $OP in
         if [[ $ROOTFS -eq 1 ]]; then
             section "Copying kernel modules to rootfs"
             sudo cp -Rf \
-                ${KERNEL_MOD_PATH}/lib/modules/${KERNEL_VERSION}/{kernel,extra,modules*} \
+                ${KERNEL_MOD_PATH}/lib/modules/${KERNEL_VERSION}/{kernel,extra,modules.*} \
                 $DEST/usr/lib/modules/${KERNEL_VERSION}
 
             section "Running depmod on rootfs"
@@ -88,10 +95,15 @@ case $OP in
 
             # This file is used by flash.sh for the kernel modules
             section "Creating kernel_supplements.tgz2 for flashing rootfs"
-            sudo rm -f kernel/kernel_supplements-new.tbz2
-            sudo tar --owner root --group root -cjf kernel/kernel_supplements-new.tbz2 -C $DEST lib/modules/${KERNEL_VERSION}/{kernel,extra,modules*}
+            tar_file=$PWD/kernel/kernel_supplements-new.tbz2
+            sudo rm -f $tar_file
+            pushd $DEST > /dev/null
+            sudo tar --owner root --group root \
+                -cjf $tar_file \
+                lib/modules/${KERNEL_VERSION}/{kernel,extra,modules.*}
+            popd > /dev/null
             sudo cp kernel/kernel_supplements{,-$(date +%Y%m%d%H%M)}.tbz2
-            sudo cp kernel/kernel_supplements{-new,}.tbz2
+            sudo cp $tar_file kernel/kernel_supplements.tbz2
         else
             section "Copying kernel modules to remote host"
             sudo rsync -a --progress \
