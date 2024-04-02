@@ -1,0 +1,37 @@
+/dts-v1/;
+/plugin/;
+
+&axilite {
+  xil_dma: dma@b50000 {
+    compatible = "xlnx,axi-dma-1.00.a";
+    reg = <0xb50000 0x10000>;
+
+    #dma-cells = <1>;
+    xlnx,addrwidth = <32>;
+
+    iommus = <&smmu 0x59>; // 0x59 = TEGRA_SID_PCIE3
+    dma-coherent;
+
+    #clock-cells = <0>;
+    clock-names = "s_axi_lite_aclk";
+    clocks = <&axi_clk>;
+    dma-channel@0{
+      compatible = "xlnx,axi-dma-s2mm-channel";
+      interrupts = <10>;
+      xlnx,datawidth = <64>;
+    };
+    dma-channel@1{
+      compatible = "xlnx,axi-dma-mm2s-channel";
+      interrupts = <9>;
+      xlnx,datawidth = <64>;
+    };
+  };
+
+  dma_proxy {
+    compatible ="xlnx,dma_proxy";
+    dmas = <&xil_dma 0  &xil_dma 1>;
+    dma-names = "dma_proxy_tx", "dma_proxy_rx";
+    iommus = <&smmu 0x59>; // 0x59 = TEGRA_SID_PCIE3
+  };
+
+};
