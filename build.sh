@@ -1,3 +1,4 @@
+KERNEL_PATH=${KERNEL_PATH:-$KERNEL_OUT_PATH}
 KERNEL_PATH=${KERNEL_PATH:?KERNEL_PATH environment variable required}
 CROSS_COMPILE=${CROSS_COMPILE:?CROSS_COMPILE environment variable required}
 DRIVER=$1
