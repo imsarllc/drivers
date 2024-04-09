@@ -23,7 +23,7 @@
  * otherwise there may be issues when using cached memory.
  */
 
-#define BUFFER_SIZE (4 * 1024 * 1024) // 4M, must match driver exactly
+#define BUFFER_SIZE (2 * 1024 * 1024) // 4M, must match driver exactly
 #define BUFFER_COUNT 4                // driver only
 
 #define FINISH_XFER _IOW('a', 'a', int32_t *)
@@ -42,3 +42,5 @@ struct channel_buffer
 	} status;
 	unsigned int length;
 } __attribute__((aligned(1024))); // 64 byte alignment required for DMA, but 1024 handy for viewing memory
+
+
