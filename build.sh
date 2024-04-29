@@ -17,6 +17,11 @@ if [[ $DRIVER == "all" ]]; then
     exit
 fi
 
+if [[ ! -e $1 ]]; then
+    echo "Path does not exist: $1"
+    exit 1
+fi
+
 case "$2" in
     clean)
         make -C $KERNEL_PATH M=$PWD/$DRIVER clean

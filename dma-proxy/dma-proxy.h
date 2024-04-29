@@ -23,12 +23,19 @@
  * otherwise there may be issues when using cached memory.
  */
 
-#define BUFFER_SIZE (2 * 1024 * 1024) // 4M, must match driver exactly
+#define BUFFER_SIZE (4 * 1024 * 1024) // 4M, must match driver exactly
 #define BUFFER_COUNT 4                // driver only
 
 #define FINISH_XFER _IOW('a', 'a', int32_t *)
 #define START_XFER _IOW('a', 'b', int32_t *)
 #define XFER _IOR('a', 'c', int32_t *)
+
+// clang-format off
+#define IMSAR_DMA_SYNCH_NOW              _IOW('a', 'n', int32_t *) // start and wait for completion of a transfer (blocking)
+#define IMSAR_DMA_ASYNCH_REQUEST_START   _IOW('a', 's', int32_t *) // start a transfer (non-blocking)
+#define IMSAR_DMA_ASYNCH_WAIT_FOR_FINISH _IOW('a', 'f', int32_t *) // wait for a transfer to finish (blocking)
+#define IMSAR_DMA_ASYNCH_CANCEL          _IOW('a', 'c', int32_t *) // cancel an transfer (non-blocking)
+// clang-format on
 
 struct channel_buffer
 {
@@ -42,5 +49,3 @@ struct channel_buffer
 	} status;
 	unsigned int length;
 } __attribute__((aligned(1024))); // 64 byte alignment required for DMA, but 1024 handy for viewing memory
-
-
