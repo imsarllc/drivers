@@ -165,6 +165,9 @@ static int imdma_open(struct inode *ino, struct file *file)
 {
 	int rc;
 	struct imdma_device *device_data = container_of(ino->i_cdev, struct imdma_device, char_dev);
+
+	dev_dbg(device_data->device, "imdma_open(...)");
+
 	file->private_data = device_data;
 
 	rc = mutex_lock_interruptible(&device_data->usage_count_mutex);
@@ -199,6 +202,8 @@ static int imdma_release(struct inode *ino, struct file *file)
 	int rc;
 	struct imdma_device *device_data = (struct imdma_device *)file->private_data;
 
+	dev_dbg(device_data->device, "imdma_release(...)");
+
 	rc = mutex_lock_interruptible(&device_data->usage_count_mutex);
 
 	// Decrement usage count
@@ -219,8 +224,12 @@ static int imdma_release(struct inode *ino, struct file *file)
 
 static int imdma_mmap(struct file *file_p, struct vm_area_struct *vma)
 {
-	// TODO: validate requested range?????
 	struct imdma_device *device_data = (struct imdma_device *)file_p->private_data;
+
+	dev_dbg(device_data->device, "imdma_mmap(...)");
+
+	// TODO: validate requested range?????
+
 	return dma_mmap_coherent(device_data->device,                 // dev
 	                         vma,                                 // vma
 	                         device_data->buffer_virtual_address, // cpu_addr
@@ -232,6 +241,9 @@ static int imdma_mmap(struct file *file_p, struct vm_area_struct *vma)
 static long imdma_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	struct imdma_device *device_data = (struct imdma_device *)file->private_data;
+
+	dev_dbg(device_data->device, "imdma_ioctl(..., %u, %px)", cmd, (void *)arg);
+
 	switch (cmd)
 	{
 	case IMDMA_TRANSFER_START:
@@ -241,6 +253,7 @@ static long imdma_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case IMDMA_BUFFER_GET_SPEC:
 		return imdma_ioctl_buffer_get_spec(device_data, arg);
 	default:
+		dev_warn(device_data->device, "unrecognized ioctl cmd: %u", cmd);
 		return -EINVAL;
 	}
 }
@@ -252,7 +265,9 @@ static long imdma_ioctl_transfer_start(struct imdma_device *device_data, unsigne
 	int rc;
 	struct imdma_transfer_spec transfer_spec;
 
-	if (copy_from_user(&transfer_spec, (int *)arg, sizeof(transfer_spec)))
+	dev_dbg(device_data->device, "imdma_ioctl_transfer_start(..., %px)", (void *)arg);
+
+	if (copy_from_user(&transfer_spec, (struct imdma_transfer_spec *)arg, sizeof(transfer_spec)))
 	{
 		dev_warn(device_data->device, "copy_from_user failed");
 		return -EINVAL;
@@ -305,8 +320,11 @@ static long imdma_ioctl_transfer_finish(struct imdma_device *device_data, unsign
 	int rc;
 	struct imdma_transfer_spec transfer_spec;
 
+	dev_dbg(device_data->device, "imdma_ioctl_transfer_finish(..., %px)", (void *)arg);
+
 	if (copy_from_user(&transfer_spec, (struct imdma_transfer_spec *)arg, sizeof(transfer_spec)))
 	{
+		dev_warn(device_data->device, "copy_from_user failed");
 		return -EINVAL;
 	}
 
@@ -338,6 +356,7 @@ static long imdma_ioctl_transfer_finish(struct imdma_device *device_data, unsign
 
 	if (copy_to_user((struct imdma_transfer_spec *)arg, &transfer_spec, sizeof(transfer_spec)))
 	{
+		dev_warn(device_data->device, "copy_to_user failed");
 		return -EINVAL;
 	}
 
@@ -348,11 +367,14 @@ static long imdma_ioctl_buffer_get_spec(struct imdma_device *device_data, unsign
 {
 	struct imdma_buffer_spec buffer_spec;
 
+	dev_dbg(device_data->device, "imdma_ioctl_buffer_get_spec(..., %px)", (void *)arg);
+
 	buffer_spec.count = device_data->buffer_count;
 	buffer_spec.size = device_data->buffer_size;
 
 	if (copy_to_user((struct imdma_buffer_spec *)arg, &buffer_spec, sizeof(buffer_spec)))
 	{
+		dev_warn(device_data->device, "copy_to_user failed");
 		return -EINVAL;
 	}
 
@@ -366,6 +388,8 @@ static int imdma_probe(struct platform_device *pdev)
 	int rc;
 	struct imdma_device *device_data;
 	struct device *dev = &pdev->dev;
+
+	dev_dbg(&pdev->dev, "imdma_probe(...)");
 
 	// Allocate and attach memory for device
 	device_data = (struct imdma_device *)devm_kzalloc(dev, sizeof(struct imdma_device), GFP_KERNEL);
@@ -422,11 +446,14 @@ static int imdma_remove(struct platform_device *pdev)
 {
 	struct imdma_device *device_data = dev_get_drvdata(&pdev->dev);
 
+	dev_dbg(&pdev->dev, "imdma_remove(...)");
+
 	imdma_char_dev_destroy(device_data);
 
 	if (device_data->dma_channel)
 	{
 		device_data->dma_channel->device->device_terminate_all(device_data->dma_channel);
+
 		dma_release_channel(device_data->dma_channel);
 	}
 
@@ -725,12 +752,16 @@ char_dev_fail:
 
 static void imdma_char_dev_destroy(struct imdma_device *device_data)
 {
+	dev_dbg(device_data->device, "imdma_char_dev_destroy(...)");
+
 	if (!device_data->char_dev_device)
 	{
 		return;
 	}
 
 	device_destroy(s_device_class, device_data->char_dev_node);
+
 	cdev_del(&device_data->char_dev);
+
 	unregister_chrdev_region(device_data->char_dev_node, 1);
 }
