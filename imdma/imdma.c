@@ -54,6 +54,9 @@ enum imdma_buffer_state
 
 struct imdma_buffer_status
 {
+	unsigned int buffer_index;
+	unsigned int buffer_offset;
+
 	// read/write must be protected by mutex
 	enum imdma_buffer_state status;
 	struct mutex mutex;
@@ -120,6 +123,8 @@ static void __exit imdma_exit(void);
 static int imdma_start_transfer(struct imdma_device *device_data, struct imdma_transfer_spec *transfer_spec);
 static void imdma_wait_for_transfer(struct imdma_device *device_data, struct imdma_transfer_spec *transfer_spec);
 static void imdma_transfer_complete_callback(void *completion);
+static void imdma_buffer_status_init(struct imdma_device *device_data, struct imdma_buffer_status *status,
+                                     unsigned int buffer_index);
 static int imdma_buffer_alloc(struct imdma_device *device_data);
 static void imdma_buffer_free(struct imdma_device *device_data);
 static int imdma_parse_dt(struct imdma_device *device_data);
@@ -491,7 +496,6 @@ static void __exit imdma_exit(void)
 
 static int imdma_start_transfer(struct imdma_device *device_data, struct imdma_transfer_spec *transfer_spec)
 {
-	enum dma_ctrl_flags flags = DMA_CTRL_ACK | DMA_PREP_INTERRUPT;
 	struct dma_async_tx_descriptor *chan_desc;
 	struct dma_device *dma_device = device_data->dma_channel->device;
 	int buffer_index = transfer_spec->buffer_index;
@@ -511,8 +515,8 @@ static int imdma_start_transfer(struct imdma_device *device_data, struct imdma_t
 	         device_data->buffer_statuses[buffer_index].length);
 
 	// Prepare the SG for DMA
-	chan_desc =
-	    dma_device->device_prep_slave_sg(device_data->dma_channel, sg_list, 1, device_data->direction, flags, NULL);
+	chan_desc = dma_device->device_prep_slave_sg(device_data->dma_channel, sg_list, 1, device_data->direction,
+	                                             DMA_CTRL_ACK | DMA_PREP_INTERRUPT, NULL);
 	if (!chan_desc)
 	{
 		dev_err(device_data->char_dev_device, "device_prep_slave_sg error\n");
@@ -579,6 +583,15 @@ static void imdma_transfer_complete_callback(void *completion)
 	complete(completion); // signal transaction completion
 }
 
+static void imdma_buffer_status_init(struct imdma_device *device_data, struct imdma_buffer_status *status,
+                                     unsigned int buffer_index)
+{
+	mutex_init(&status->mutex);
+	status->buffer_index = buffer_index;
+	status->buffer_offset = buffer_index * device_data->buffer_size;
+	status->dma_handle = device_data->buffer_bus_address + status->buffer_offset;
+}
+
 static int imdma_buffer_alloc(struct imdma_device *device_data)
 {
 	int rc;
@@ -614,7 +627,7 @@ static int imdma_buffer_alloc(struct imdma_device *device_data)
 
 	for (i = 0; i < device_data->buffer_count; i++)
 	{
-		mutex_init(&device_data->buffer_statuses[i].mutex);
+		imdma_buffer_status_init(device_data, &device_data->buffer_statuses[i], i);
 	}
 
 	return 0;
