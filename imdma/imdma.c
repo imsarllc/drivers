@@ -368,7 +368,7 @@ static int imdma_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 
 	// Allocate and attach memory for device
-	device_data = (struct imdma_device *)devm_kmalloc(dev, sizeof(struct imdma_device), GFP_KERNEL);
+	device_data = (struct imdma_device *)devm_kzalloc(dev, sizeof(struct imdma_device), GFP_KERNEL);
 	if (!device_data)
 	{
 		dev_err(dev, "failed to allocate memory for device data\n");
@@ -387,13 +387,20 @@ static int imdma_probe(struct platform_device *pdev)
 		return rc;
 	}
 
-	// Request DMA channel (uses device tree "dmas" property)
+	// Request DMA channel (uses device tree "dmas" and "dma-names" properties)
 	device_data->dma_channel = dma_request_chan(device_data->device, device_data->dma_channel_name);
-	if (!device_data->dma_channel)
+	if (IS_ERR(device_data->dma_channel))
 	{
-		dev_err(device_data->device, "request for DMA channel failed\n");
-		return -EBUSY;
+		rc = PTR_ERR(device_data->dma_channel);
+		dev_err(device_data->device, "request for DMA channel \"%s\" failed; rc = %d\n", device_data->dma_channel_name,
+		        rc);
+		device_data->dma_channel = 0;
+		return rc;
 	}
+
+	// Clear buffer pointers
+	device_data->buffer_virtual_address = 0;
+	device_data->buffer_bus_address = 0;
 
 	// Create a character device for the channel
 	rc = imdma_char_dev_create(device_data);
@@ -402,10 +409,6 @@ static int imdma_probe(struct platform_device *pdev)
 		dev_err(device_data->device, "imdma_char_dev_create error; rc=%d\n", rc);
 		goto char_device_fail;
 	}
-
-	// Clear buffer pointers
-	device_data->buffer_virtual_address = 0;
-	device_data->buffer_bus_address = 0;
 
 	return 0;
 
@@ -469,8 +472,7 @@ static int imdma_start_transfer(struct imdma_device *device_data, struct imdma_t
 
 	device_data->buffer_statuses[buffer_index].length = transfer_spec->length;
 
-	// A single entry scatter gather list is used as it's not clear how to do it with a simpler method.
-	// Get a descriptor for the transfer ready to submit
+	// Initialize and populate the scatter-gather list (with one entry)
 	// TODO: use sg_init_one instead?
 	sg_list = &device_data->buffer_statuses[buffer_index].sg_list;
 	sg_init_table(sg_list, 1);
@@ -481,6 +483,7 @@ static int imdma_start_transfer(struct imdma_device *device_data, struct imdma_t
 	         buffer_index, (void *)device_data->buffer_statuses[buffer_index].dma_handle,
 	         device_data->buffer_statuses[buffer_index].length);
 
+	// Prepare the SG for DMA
 	chan_desc =
 	    dma_device->device_prep_slave_sg(device_data->dma_channel, sg_list, 1, device_data->direction, flags, NULL);
 	if (!chan_desc)
@@ -489,19 +492,24 @@ static int imdma_start_transfer(struct imdma_device *device_data, struct imdma_t
 		return -1;
 	}
 
+	// Attach completion callback
 	chan_desc->callback = imdma_transfer_complete_callback;
 	chan_desc->callback_param = &device_data->buffer_statuses[buffer_index].cmp;
 
+	// Initialize the completion
 	init_completion(&device_data->buffer_statuses[buffer_index].cmp);
 
+	// Attempt to submit the SG to the DMA engine
 	device_data->buffer_statuses[buffer_index].cookie = dmaengine_submit(chan_desc);
+
+	// Check for failures
 	if (dma_submit_error(device_data->buffer_statuses[buffer_index].cookie))
 	{
 		dev_err(device_data->char_dev_device, "Submit error\n");
 		return -1;
 	}
 
-	// Start the DMA transaction which was previously queued up in the DMA engine
+	// Finally, issue the DMA
 	dma_async_issue_pending(device_data->dma_channel);
 
 	return 0;
@@ -562,11 +570,12 @@ static int imdma_buffer_alloc(struct imdma_device *device_data)
 		return -ENOMEM;
 	}
 
-	dev_info(device_data->device, "Allocated memory; virtual address: %px, bus address: %px\n",
-	         device_data->buffer_virtual_address, (void *)device_data->buffer_bus_address);
+	dev_info(device_data->device, "alloc DMA memory; VAddr: %px, BAddr: %px, size: %u\n",
+	         device_data->buffer_virtual_address, (void *)device_data->buffer_bus_address,
+	         device_data->buffer_size * device_data->buffer_count);
 
 	device_data->buffer_statuses =
-	    devm_kmalloc(device_data->device, sizeof(struct imdma_buffer_status) * device_data->buffer_count, GFP_KERNEL);
+	    devm_kzalloc(device_data->device, sizeof(struct imdma_buffer_status) * device_data->buffer_count, GFP_KERNEL);
 
 	rc = 0;
 	if (!device_data->buffer_statuses)
@@ -593,6 +602,9 @@ static void imdma_buffer_free(struct imdma_device *device_data)
 {
 	if (device_data->buffer_virtual_address)
 	{
+
+		dev_info(device_data->device, "free DMA memory; VAddr: %px, BAddr: %px\n", device_data->buffer_virtual_address,
+		         (void *)device_data->buffer_bus_address);
 		dmam_free_coherent(device_data->device, device_data->buffer_size * device_data->buffer_count,
 		                   device_data->buffer_virtual_address, device_data->buffer_bus_address);
 		device_data->buffer_virtual_address = 0;
@@ -629,10 +641,10 @@ static int imdma_parse_dt(struct imdma_device *device_data)
 	}
 
 	// Read the name of the device
-	rc = device_property_read_string(device_data->device, "name", &device_data->device_name);
+	rc = device_property_read_string(device_data->device, "imsar,name", &device_data->device_name);
 	if (rc < 0)
 	{
-		dev_err(device_data->device, "missing or invalid name property\n");
+		dev_err(device_data->device, "missing or invalid imsar,name property\n");
 		return rc;
 	}
 
@@ -667,7 +679,7 @@ static int imdma_parse_dt(struct imdma_device *device_data)
 static int imdma_char_dev_create(struct imdma_device *device_data)
 {
 	int rc;
-	char prefix[32] = "imdma_";
+	char device_name_full[32] = "imdma_";
 
 	// Allocate a character device region
 	rc = alloc_chrdev_region(&device_data->char_dev_node, 0, 1, DRIVER_NAME);
@@ -690,9 +702,9 @@ static int imdma_char_dev_create(struct imdma_device *device_data)
 	}
 
 	// Create the device node in /dev
-	strcat(prefix, device_data->device_name);
+	strcat(device_name_full, device_data->device_name);
 	device_data->char_dev_device =
-	    device_create(s_device_class, NULL, device_data->char_dev_node, NULL, device_data->device_name);
+	    device_create(s_device_class, NULL, device_data->char_dev_node, NULL, device_name_full);
 
 	if (IS_ERR(device_data->char_dev_device))
 	{

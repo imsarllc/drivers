@@ -29,10 +29,10 @@
 
   imdma@0 {
     compatible ="imsar,dma-channel";
-    name = "downsampled";
     iommus = <&smmu 0x59>; // 0x59 = TEGRA_SID_PCIE3
     dmas = <&xil_dma 1>;
     dma-names = "rx";
+    imsar,name = "downsampled";
     imsar,direction = <2>; // DEV_TO_MEM; see enum dma_transfer_direction
     imsar,buffer-count = <4>;
     imsar,buffer-size = <25 * 1024 * 1024>; // bytes
