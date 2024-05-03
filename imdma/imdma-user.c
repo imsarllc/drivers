@@ -3,13 +3,14 @@
 
 #include <fcntl.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
-
 
 #include "imdma.h"
 
@@ -26,18 +27,42 @@ static void printHexDump(const void *start, unsigned int length)
 		printf("%02x ", buf[i]);
 		byteCount++;
 	}
+
+	printf("\n");
+}
+
+static void printUnsignedLongs(const void *start, unsigned int length)
+{
+	const uint64_t *data = (const uint64_t *)start;
+	unsigned int count = length / sizeof(uint64_t);
+	for (unsigned int i = 0; i < count; i++)
+	{
+		printf("%lu\n", data[i]);
+	}
 }
 
 int main(int argc, const char *const argv[])
 {
 	if (argc < 2)
 	{
-		printf("Usage: %s <device>\n", argv[0]);
+		printf("Usage: %s <device> [size:1000] [index=0]\n", argv[0]);
 		printf("Example: %s /dev/imdma/downsampled\n", argv[0]);
 		return 1;
 	}
 
 	const char *devicePath = argv[1];
+
+	unsigned int size = 1000;
+	if (argc >= 3)
+	{
+		size = strtoul(argv[2], NULL, 10);
+	}
+
+	unsigned int bufferIndex = 0;
+	if (argc >= 4)
+	{
+		bufferIndex = strtoul(argv[3], NULL, 10);
+	}
 
 	// Open the device
 	int devfd = open(devicePath, 0);
@@ -70,10 +95,9 @@ int main(int argc, const char *const argv[])
 	}
 
 	// Configure the transfer
-	const unsigned int TRANSFER_SIZE = 1000; // number of 8-byte transactions
 	struct imdma_transfer_spec transferSpec = {
-	    .buffer_index = 0,      //
-	    .length = TRANSFER_SIZE //
+	    .buffer_index = bufferIndex, //
+	    .length = size               //
 	};
 
 	// Start the transfer
@@ -102,7 +126,9 @@ int main(int argc, const char *const argv[])
 	}
 
 	// Use the data (access to this data MAY be uncached -- avoid repeated reads)
-	printHexDump(&buffer[transferSpec.offset], transferSpec.length);
+	// printHexDump(&buffer[transferSpec.offset], transferSpec.length);
+
+	printUnsignedLongs(&buffer[transferSpec.offset], transferSpec.length);
 
 	// Unmap rx channel
 	munmap(buffer, bufferSpec.count * bufferSpec.size);
