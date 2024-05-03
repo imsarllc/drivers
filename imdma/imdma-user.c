@@ -8,6 +8,8 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <unistd.h>
+
 
 #include "imdma.h"
 
@@ -38,8 +40,8 @@ int main(int argc, const char *const argv[])
 	const char *devicePath = argv[1];
 
 	// Open the device
-	int devfd = open(devicePath, "r");
-	if (devfd != 0)
+	int devfd = open(devicePath, 0);
+	if (devfd < 0)
 	{
 		perror("failed to open device");
 		return 1;
@@ -57,13 +59,13 @@ int main(int argc, const char *const argv[])
 	// Map the memory into user space
 	unsigned char *buffer = mmap(NULL,                               // requested address
 	                             bufferSpec.count * bufferSpec.size, // mapped size
-	                             PROT_READ | PROT_WRITE,             // protections
+	                             PROT_READ,                          // protections
 	                             MAP_SHARED,                         // flags
 	                             devfd,                              // file descriptor
 	                             0);                                 // offset
 	if (buffer == MAP_FAILED)
 	{
-		perror("failed to get buffer specifications");
+		perror("mmap");
 		return 1;
 	}
 
