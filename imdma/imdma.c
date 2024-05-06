@@ -36,7 +36,8 @@
 
 #include "imdma.h"
 
-#define DRIVER_NAME "imdma"
+#define IMDMA_DRIVER_NAME "imdma"
+#define IMDMA_TIMEOUT_MS_MAX 30000
 
 MODULE_AUTHOR("IMSAR, LLC.");
 MODULE_DESCRIPTION("IMSAR DMA driver");
@@ -61,7 +62,7 @@ struct imdma_buffer_status
 	enum imdma_buffer_state status;
 	struct mutex mutex;
 
-	unsigned int length;
+	unsigned int length_bytes;
 	struct completion cmp;
 	dma_cookie_t cookie;
 	dma_addr_t dma_handle;
@@ -74,8 +75,9 @@ struct imdma_device
 	const char *device_name;               // name
 	const char *dma_channel_name;          // dma-names
 	unsigned int buffer_count;             // imsar,buffer-count
-	unsigned int buffer_size;              // imsar,buffer-size
+	unsigned int buffer_size_bytes;        // imsar,buffer-size-bytes
 	enum dma_transfer_direction direction; // imsar,direction
+	unsigned int default_timeout_ms;       // imsar,default-timeout-ms
 
 	// Device
 	struct device *device;
@@ -284,9 +286,9 @@ static long imdma_ioctl_transfer_start(struct imdma_device *device_data, unsigne
 		return -EINVAL;
 	}
 
-	if (transfer_spec.length >= device_data->buffer_size)
+	if (transfer_spec.length_bytes >= device_data->buffer_size_bytes)
 	{
-		dev_warn(device_data->device, "length is greater than buffer size");
+		dev_warn(device_data->device, "length_bytes is greater than buffer size");
 		return -EINVAL;
 	}
 
@@ -339,6 +341,12 @@ static long imdma_ioctl_transfer_finish(struct imdma_device *device_data, unsign
 		return -EINVAL;
 	}
 
+	if (transfer_spec.timeout_ms >= IMDMA_TIMEOUT_MS_MAX) // 30 seconds max
+	{
+		dev_warn(device_data->device, "timeout_ms is too large");
+		return -EINVAL;
+	}
+
 	rc = mutex_lock_interruptible(&device_data->buffer_statuses[transfer_spec.buffer_index].mutex);
 	if (rc)
 	{
@@ -375,7 +383,7 @@ static long imdma_ioctl_buffer_get_spec(struct imdma_device *device_data, unsign
 	dev_dbg(device_data->device, "imdma_ioctl_buffer_get_spec(..., %px)", (void *)arg);
 
 	buffer_spec.count = device_data->buffer_count;
-	buffer_spec.size = device_data->buffer_size;
+	buffer_spec.size_bytes = device_data->buffer_size_bytes;
 
 	if (copy_to_user((struct imdma_buffer_spec *)arg, &buffer_spec, sizeof(buffer_spec)))
 	{
@@ -470,7 +478,7 @@ static int imdma_remove(struct platform_device *pdev)
 static int __init imdma_init(void)
 {
 	// Create device class
-	s_device_class = class_create(THIS_MODULE, DRIVER_NAME);
+	s_device_class = class_create(THIS_MODULE, IMDMA_DRIVER_NAME);
 	if (IS_ERR(s_device_class))
 	{
 		return PTR_ERR(s_device_class);
@@ -501,18 +509,18 @@ static int imdma_start_transfer(struct imdma_device *device_data, struct imdma_t
 	int buffer_index = transfer_spec->buffer_index;
 	struct scatterlist *sg_list;
 
-	device_data->buffer_statuses[buffer_index].length = transfer_spec->length;
+	device_data->buffer_statuses[buffer_index].length_bytes = transfer_spec->length_bytes;
 
 	// Initialize and populate the scatter-gather list (with one entry)
 	// TODO: use sg_init_one instead?
 	sg_list = &device_data->buffer_statuses[buffer_index].sg_list;
 	sg_init_table(sg_list, 1);
 	sg_dma_address(sg_list) = device_data->buffer_statuses[buffer_index].dma_handle;
-	sg_dma_len(sg_list) = device_data->buffer_statuses[buffer_index].length;
+	sg_dma_len(sg_list) = device_data->buffer_statuses[buffer_index].length_bytes;
 
-	dev_info(device_data->char_dev_device, "start_transfer: buffer_index = %d, dma_handle = 0x%px, length = %u",
-	         buffer_index, (void *)device_data->buffer_statuses[buffer_index].dma_handle,
-	         device_data->buffer_statuses[buffer_index].length);
+	dev_dbg(device_data->char_dev_device, "start_transfer: buffer_index = %d, dma_handle = 0x%px, length = %u",
+	        buffer_index, (void *)device_data->buffer_statuses[buffer_index].dma_handle,
+	        device_data->buffer_statuses[buffer_index].length_bytes);
 
 	// Prepare the SG for DMA
 	chan_desc = dma_device->device_prep_slave_sg(device_data->dma_channel, sg_list, 1, device_data->direction,
@@ -548,17 +556,28 @@ static int imdma_start_transfer(struct imdma_device *device_data, struct imdma_t
 
 static void imdma_wait_for_transfer(struct imdma_device *device_data, struct imdma_transfer_spec *transfer_spec)
 {
-	unsigned long timeout = msecs_to_jiffies(transfer_spec->timeout_ms);
+	unsigned long timeout_jiffies;
+	unsigned int timeout_ms;
 	enum dma_status status;
 	int buffer_index = transfer_spec->buffer_index;
 
+	if (transfer_spec->timeout_ms != 0)
+	{
+		timeout_ms = transfer_spec->timeout_ms;
+	}
+	else
+	{
+		timeout_ms = device_data->default_timeout_ms;
+	}
+
+	timeout_jiffies = msecs_to_jiffies(timeout_ms);
 
 	// Wait for the transaction to complete, or timeout, or get an error
-	timeout = wait_for_completion_timeout(&device_data->buffer_statuses[buffer_index].cmp, timeout);
+	timeout_jiffies = wait_for_completion_timeout(&device_data->buffer_statuses[buffer_index].cmp, timeout_jiffies);
 	status = dma_async_is_tx_complete(device_data->dma_channel, device_data->buffer_statuses[buffer_index].cookie, NULL,
 	                                  NULL);
 
-	if (timeout == 0)
+	if (timeout_jiffies == 0)
 	{
 		transfer_spec->status = IMDMA_STATUS_TIMEOUT;
 		dev_err(device_data->char_dev_device, "DMA timed out\n");
@@ -573,8 +592,8 @@ static void imdma_wait_for_transfer(struct imdma_device *device_data, struct imd
 		return;
 	}
 
-	transfer_spec->length = device_data->buffer_statuses[buffer_index].length;
-	transfer_spec->offset = buffer_index * device_data->buffer_size;
+	transfer_spec->length_bytes = device_data->buffer_statuses[buffer_index].length_bytes;
+	transfer_spec->offset_bytes = buffer_index * device_data->buffer_size_bytes;
 	transfer_spec->status = IMDMA_STATUS_COMPLETE;
 }
 
@@ -588,7 +607,7 @@ static void imdma_buffer_status_init(struct imdma_device *device_data, struct im
 {
 	mutex_init(&status->mutex);
 	status->buffer_index = buffer_index;
-	status->buffer_offset = buffer_index * device_data->buffer_size;
+	status->buffer_offset = buffer_index * device_data->buffer_size_bytes;
 	status->dma_handle = device_data->buffer_bus_address + status->buffer_offset;
 }
 
@@ -599,10 +618,10 @@ static int imdma_buffer_alloc(struct imdma_device *device_data)
 
 	// Allocate DMA coherent memory that will be shared with user space
 	device_data->buffer_virtual_address =
-	    (unsigned char *)dmam_alloc_coherent(device_data->device,                                  // dev
-	                                         device_data->buffer_size * device_data->buffer_count, // size
-	                                         &device_data->buffer_bus_address,                     // dma_handle (out)
-	                                         GFP_KERNEL);                                          // flags
+	    (unsigned char *)dmam_alloc_coherent(device_data->device,                                        // dev
+	                                         device_data->buffer_size_bytes * device_data->buffer_count, // size
+	                                         &device_data->buffer_bus_address, // dma_handle (out)
+	                                         GFP_KERNEL);                      // flags
 
 	if (!device_data->buffer_virtual_address)
 	{
@@ -610,9 +629,9 @@ static int imdma_buffer_alloc(struct imdma_device *device_data)
 		return -ENOMEM;
 	}
 
-	dev_info(device_data->device, "alloc DMA memory; VAddr: %px, BAddr: %px, size: %u\n",
-	         device_data->buffer_virtual_address, (void *)device_data->buffer_bus_address,
-	         device_data->buffer_size * device_data->buffer_count);
+	dev_dbg(device_data->device, "alloc DMA memory; VAddr: %px, BAddr: %px, size: %u\n",
+	        device_data->buffer_virtual_address, (void *)device_data->buffer_bus_address,
+	        device_data->buffer_size_bytes * device_data->buffer_count);
 
 	device_data->buffer_statuses =
 	    devm_kzalloc(device_data->device, sizeof(struct imdma_buffer_status) * device_data->buffer_count, GFP_KERNEL);
@@ -643,9 +662,9 @@ static void imdma_buffer_free(struct imdma_device *device_data)
 	if (device_data->buffer_virtual_address)
 	{
 
-		dev_info(device_data->device, "free DMA memory; VAddr: %px, BAddr: %px\n", device_data->buffer_virtual_address,
-		         (void *)device_data->buffer_bus_address);
-		dmam_free_coherent(device_data->device, device_data->buffer_size * device_data->buffer_count,
+		dev_dbg(device_data->device, "free DMA memory; VAddr: %px, BAddr: %px\n", device_data->buffer_virtual_address,
+		        (void *)device_data->buffer_bus_address);
+		dmam_free_coherent(device_data->device, device_data->buffer_size_bytes * device_data->buffer_count,
 		                   device_data->buffer_virtual_address, device_data->buffer_bus_address);
 		device_data->buffer_virtual_address = 0;
 		device_data->buffer_bus_address = 0;
@@ -706,11 +725,20 @@ static int imdma_parse_dt(struct imdma_device *device_data)
 	}
 
 	// Read the desired buffer count
-	rc = device_property_read_u32_array(device_data->device, "imsar,buffer-size", &device_data->buffer_size, 1);
+	rc = device_property_read_u32_array(device_data->device, "imsar,buffer-size-bytes", &device_data->buffer_size_bytes,
+	                                    1);
 	if (rc)
 	{
 		dev_err(device_data->device, "missing or invalid imsar,buffer-count property\n");
 		return rc;
+	}
+
+	// Read the default timeout (ms)
+	rc = device_property_read_u32_array(device_data->device, "imsar,default-timeout-ms",
+	                                    &device_data->default_timeout_ms, 1);
+	if (rc)
+	{
+		device_data->default_timeout_ms = 1000; // 1 second
 	}
 
 	return 0;
@@ -722,7 +750,7 @@ static int imdma_char_dev_create(struct imdma_device *device_data)
 	char device_name_full[32] = "imdma_";
 
 	// Allocate a character device region
-	rc = alloc_chrdev_region(&device_data->char_dev_node, 0, 1, DRIVER_NAME);
+	rc = alloc_chrdev_region(&device_data->char_dev_node, 0, 1, IMDMA_DRIVER_NAME);
 	if (rc)
 	{
 		dev_err(device_data->device, "unable to get a char device number\n");

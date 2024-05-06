@@ -35,6 +35,7 @@
     imsar,name = "downsampled";
     imsar,direction = <2>; // DEV_TO_MEM; see enum dma_transfer_direction
     imsar,buffer-count = <4>;
-    imsar,buffer-size = <25 * 1024 * 1024>; // bytes
+    imsar,buffer-size-bytes = <25 * 1024 * 1024>; // 25 MB
+    imsar,default-timeout-ms = <1000>; // 1 second
   };
 };

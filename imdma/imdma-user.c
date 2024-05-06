@@ -14,11 +14,11 @@
 
 #include "imdma.h"
 
-static void printHexDump(const void *start, unsigned int length)
+static void printHexDump(const void *start, unsigned int length_bytes)
 {
 	const unsigned char *buf = (unsigned char *)start;
 	unsigned int byteCount = 0;
-	for (unsigned int i = 0; i < length; i++)
+	for (unsigned int i = 0; i < length_bytes; i++)
 	{
 		if ((byteCount % 32) == 0)
 		{
@@ -31,10 +31,10 @@ static void printHexDump(const void *start, unsigned int length)
 	printf("\n");
 }
 
-static void printUnsignedLongs(const void *start, unsigned int length)
+static void printUnsignedLongs(const void *start, unsigned int length_bytes)
 {
 	const uint64_t *data = (const uint64_t *)start;
-	unsigned int count = length / sizeof(uint64_t);
+	unsigned int count = length_bytes / sizeof(uint64_t);
 	for (unsigned int i = 0; i < count; i++)
 	{
 		printf("%lu\n", data[i]);
@@ -45,17 +45,17 @@ int main(int argc, const char *const argv[])
 {
 	if (argc < 2)
 	{
-		printf("Usage: %s <device> [size:1000] [index=0]\n", argv[0]);
+		printf("Usage: %s <device> [size_bytes:1000] [index=0]\n", argv[0]);
 		printf("Example: %s /dev/imdma/downsampled\n", argv[0]);
 		return 1;
 	}
 
 	const char *devicePath = argv[1];
 
-	unsigned int size = 1000;
+	unsigned int size_bytes = 1000;
 	if (argc >= 3)
 	{
-		size = strtoul(argv[2], NULL, 10);
+		size_bytes = strtoul(argv[2], NULL, 10);
 	}
 
 	unsigned int bufferIndex = 0;
@@ -82,12 +82,12 @@ int main(int argc, const char *const argv[])
 	}
 
 	// Map the memory into user space
-	unsigned char *buffer = mmap(NULL,                               // requested address
-	                             bufferSpec.count * bufferSpec.size, // mapped size
-	                             PROT_READ,                          // protections
-	                             MAP_SHARED,                         // flags
-	                             devfd,                              // file descriptor
-	                             0);                                 // offset
+	unsigned char *buffer = mmap(NULL,                                     // requested address
+	                             bufferSpec.count * bufferSpec.size_bytes, // mapped size
+	                             PROT_READ,                                // protections
+	                             MAP_SHARED,                               // flags
+	                             devfd,                                    // file descriptor
+	                             0);                                       // offset
 	if (buffer == MAP_FAILED)
 	{
 		perror("mmap");
@@ -97,11 +97,12 @@ int main(int argc, const char *const argv[])
 	// Configure the transfer
 	struct imdma_transfer_spec transferSpec = {
 	    .buffer_index = bufferIndex, //
-	    .length = size               //
+	    .length_bytes = size_bytes,  //
+	    .timeout_ms = 1000,
 	};
 
 	// Start the transfer
-	// Note: This ioctl requires transferSpec.buffer_index, transferSpec.length
+	// Note: This ioctl requires transferSpec.buffer_index, transferSpec.length_bytes
 	int startResult = ioctl(devfd, IMDMA_TRANSFER_START, &transferSpec);
 	if (startResult < 0)
 	{
@@ -111,7 +112,7 @@ int main(int argc, const char *const argv[])
 
 	// Wait for transfer to finish
 	// Note: This ioctl requires transferSpec.buffer_index
-	//       It sets transferSpec.{status, offset, length}
+	//       It sets transferSpec.{status, offset_bytes, length_bytes}
 	int finishResult = ioctl(devfd, IMDMA_TRANSFER_FINISH, &transferSpec);
 	if (finishResult < 0)
 	{
@@ -126,12 +127,13 @@ int main(int argc, const char *const argv[])
 	}
 
 	// Use the data (access to this data MAY be uncached -- avoid repeated reads)
-	// printHexDump(&buffer[transferSpec.offset], transferSpec.length);
+	// printHexDump(&buffer[transferSpec.offset_bytes], transferSpec.length_bytes);
 
-	printUnsignedLongs(&buffer[transferSpec.offset], transferSpec.length);
+	// Use the data (access to this data MAY be uncached -- avoid repeated reads)
+	// printUnsignedLongs(&buffer[transferSpec.offset_bytes], transferSpec.length_bytes);
 
 	// Unmap rx channel
-	munmap(buffer, bufferSpec.count * bufferSpec.size);
+	munmap(buffer, bufferSpec.count * bufferSpec.size_bytes);
 
 	// Close the device
 	close(devfd);

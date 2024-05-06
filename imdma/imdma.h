@@ -29,8 +29,8 @@ enum imdma_transfer_status
 
 struct imdma_buffer_spec
 {
-	unsigned int count; // number of buffers
-	unsigned int size;  // size of each buffer in bytes
+	unsigned int count;      // number of buffers
+	unsigned int size_bytes; // size of each buffer
 };
 
 struct imdma_transfer_spec
@@ -39,7 +39,7 @@ struct imdma_transfer_spec
 	unsigned int buffer_index; // buffer to use (must be < number of buffers)
 
 	// This field must be set by the user before IMDMA_TRANSFER_NOW, IMDMA_TRANSFER_START
-	unsigned int length; // requested number of bytes to transfer
+	unsigned int length_bytes; // requested size to transfer
 
 	// This field must be set by the user before IMDMA_TRANSFER_FINISH
 	unsigned int timeout_ms; // requested timeout in milliseconds; must be > 0
@@ -47,14 +47,14 @@ struct imdma_transfer_spec
 	// These fields are set by ioctl calls: IMDMA_TRANSFER_NOW, IMDMA_TRANSFER_FINISH
 	// They do not need to be set by the user
 	enum imdma_transfer_status status; // status of the transfer
-	unsigned int offset;               // start offset of transferred data
+	unsigned int offset_bytes;         // start offset of transferred data
 };
 
 // IOCTL options
 
 // Transfer ioctls
 // #define IMDMA_TRANSFER_NOW _IOW('a', 'n', struct imdma_transfer_spec *)    // start and finish a transfer (blocking)
-#define IMDMA_TRANSFER_START _IOW('a', 's', struct imdma_transfer_spec *)  // start a transfer (non-blocking)
+#define IMDMA_TRANSFER_START _IOW('a', 's', struct imdma_transfer_spec *) // start a transfer (non-blocking)
 // #define IMDMA_TRANSFER_CHECK _IOW('a', 'e', struct imdma_transfer_spec *)  // check status of transfer (non-blocking)
 #define IMDMA_TRANSFER_FINISH _IOW('a', 'f', struct imdma_transfer_spec *) // wait for a transfer to finish (blocking)
 // #define IMDMA_TRANSFER_CANCEL _IOW('a', 'c', struct imdma_transfer_spec *) // cancel an transfer (non-blocking)
