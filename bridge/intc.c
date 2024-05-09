@@ -13,143 +13,26 @@
 #include <asm/io.h>
 #include <asm-generic/errno.h>
 #include <asm/ioctls.h>
-#include "version.h"
 
-#ifndef HZ
-#define HZ 1
-#endif
 
-// #define DEBUG
-
-#define FPGA_REGS_SIZE      0x00010000
-#define INTC_IRQ_COUNT      16
-#define INTC_EN_OFFSET      0x0000
-#define INTC_MASK_OFFSET    0x0001
-#define INTC_SET_OFFSET     0x0002
-#define INTC_CLR_OFFSET     0x0003
-#define INTC_PEND_OFFSET    0x0004
-#define INTC_ADDR_MASK      0x0fff
-#define INTC_DATA_INVALID   0xbeef
-
+// macros
+#define DEBUG 0
 #define DEVICE_NAME  "intc"
 
-#define DEBUG 0
-
-#if DEBUG
-#define PRINTK_COND(...) printk(__VA_ARGS__)
-#else
-#define PRINTK_COND(...)
-#endif
-
-// Note: this is broken and I'm not going to fix it right now
-// #if DEBUG
-// #define intc_reg_write(addr, data) \
-// 	{ \
-// 		iowrite16((data), vbase + (addr) * 4); \
-// 		printk(KERN_DEBUG "<%s> wr addr:%04x data:%04x\n", DEVICE_NAME, addr, data); \
-// 	}
-// #define intc_reg_read(data, addr) \
-// 	{ \
-// 		data = ioread16(vbase + (addr) * 4); \
-// 		printk(KERN_DEBUG "<%s> rd addr:%04x data:%04x\n", DEVICE_NAME, addr, data); \
-// 		data
-// 	}
-// #else
-#define intc_reg_write(addr, data)  iowrite16((data), vbase + (addr) * 4)
-#define intc_reg_read(data, addr)   data = ioread16(vbase + (addr) * 4)
-// #endif // DEBUG
-#define fpga_reg_read(addr)         ioread16(vfpga + (addr) * 4);
-
 typedef struct {
-	// interrupt specific
-	bool valid; // indicates fresh interrupt
 	const char* name;
-	unsigned long count;
 	signed long default_timeout; // in jiffies
 	wait_queue_head_t wq;
 } intc_dev_t;
 
-typedef struct {
-	int rcnt;   // number of addresses to read on interrupt
-	unsigned short *addr; // kmalloc'd array of addresses
-	unsigned short *data; // values read on interrupt to be copied to user
-	signed long timeout; // in jiffies
-} intc_file_t;
 
 // globals
-static intc_dev_t fid[INTC_IRQ_COUNT]; // FPGA interrupt device
-static void *vfpga;       // virtual address to FPGA regs base address
-static void *vbase;       // virtual address to FPGA intc regs base address
-static int irq;           // request number
-static int irqnum;        // grant number
 static spinlock_t ilock;  // spinlock used for interrupt handler
 static int open_files = 0;
 
 static struct cdev cdev;
 static dev_t dev;
 static struct class *cl;
-
-static void intc_reg_set(unsigned short addr, unsigned short mask)
-{
-	unsigned short data;
-	intc_reg_read(data, addr);
-	intc_reg_write(addr, data | mask);
-}
-
-static void intc_reg_clear(unsigned short addr, unsigned short mask)
-{
-	unsigned short data;
-	intc_reg_read(data, addr);
-	intc_reg_write(addr, data & ~mask);
-}
-
-static int intc_enable(int intc_line, int enable)
-{
-	if (enable)
-		intc_reg_set(INTC_EN_OFFSET, 1 << intc_line);
-	else
-		intc_reg_clear(INTC_EN_OFFSET, 1 << intc_line);
-
-	return 0;
-}
-
-static void intc_addr_data_free(intc_file_t* file_data)
-{
-	if (file_data->addr) {
-		kfree(file_data->addr);
-		file_data->addr = NULL;
-	}
-	if (file_data->data) {
-		kfree(file_data->data);
-		file_data->data = NULL;
-	}
-	file_data->rcnt = 0;
-}
-
-static int intc_kmalloc(intc_file_t* file_data, int bytes)
-{
-	int k;
-
-	if (!(file_data->addr = (unsigned short *)kmalloc(bytes, GFP_KERNEL))) {
-		printk(KERN_ERR "<%s> kmalloc failed\n", DEVICE_NAME);
-		return -ENOMEM;
-	}
-
-	if (!(file_data->data = (unsigned short *)kmalloc(bytes, GFP_KERNEL))) {
-		printk(KERN_ERR "<%s> kmalloc failed\n", DEVICE_NAME);
-		kfree(file_data->addr);
-		file_data->addr = NULL;
-		return -ENOMEM;
-	}
-
-	// initialize data
-	for (k = 0; k < bytes; k++)
-		file_data->data[k] = INTC_DATA_INVALID;
-
-	file_data->rcnt = bytes / sizeof(unsigned short);
-
-	return bytes;
-}
 
 static ssize_t intc_write(struct file *f, const char __user *buf, size_t bytes, loff_t * ppos)
 {
@@ -273,11 +156,6 @@ static long intc_irq_init(int num)
 	return 0;
 }
 
-static void intc_reset(void)
-{
-	intc_reg_write(INTC_EN_OFFSET, 0);
-	intc_reg_write(INTC_CLR_OFFSET, 0xffff);
-}
 
 static long intc_ioctl(struct file *f, unsigned int request, unsigned long arg)
 {
@@ -312,7 +190,7 @@ static long intc_ioctl(struct file *f, unsigned int request, unsigned long arg)
 		break;
 	}
 	case TCGETS:
-		//Silently ignore terminal commands
+		//Silently igore terminal commands
 		ret = -EINVAL;
 		break;
 	default:
@@ -491,7 +369,7 @@ static int intc_of_remove(struct platform_device *of_dev)
 	}
 	class_destroy(cl);
 	unregister_chrdev_region(dev, INTC_IRQ_COUNT);
-	printk(KERN_DEBUG "<%s> exit: unregistered\n", DEVICE_NAME);
+	PRINTK_COND(KERN_DEBUG "<%s> exit: unregistered\n", DEVICE_NAME);
 
 	free_irq(irqnum, NULL);
 	irqnum = 0;
@@ -525,7 +403,7 @@ static int intc_of_probe(struct platform_device *ofdev)
 	}
 
 	irq = res->start;
-	printk(KERN_INFO "<%s> probe: IRQ read from DTS entry as %d\n", DEVICE_NAME, irq);
+	PRINTK_COND(KERN_INFO "<%s> probe: IRQ read from DTS entry as %d\n", DEVICE_NAME, irq);
 	ret = intc_irq_init(irq);
 	if (ret != 0)
 		return ret;
@@ -533,7 +411,7 @@ static int intc_of_probe(struct platform_device *ofdev)
 	res = platform_get_resource(ofdev, IORESOURCE_MEM, 0);
 	size = resource_size(res);
 #if DEBUG
-	printk(KERN_INFO "<%s> probe: register physical base address = %x\n", DEVICE_NAME, res->start);
+	PRINTK_COND(KERN_INFO "<%s> probe: register physical base address = %x\n", DEVICE_NAME, res->start);
 #endif
 
 	vbase = of_iomap(ofdev->dev.of_node, 0);
@@ -572,14 +450,14 @@ static int intc_of_probe(struct platform_device *ofdev)
 			dev_info(&ofdev->dev, "no property reg for child of FPGA interrupt controller\n");
 		} else {
 			fid[index].name = child->name;
-			printk(KERN_INFO "interrupt #%d = %s\n", index, child->name);
+			PRINTK_COND(KERN_INFO "interrupt #%d = %s\n", index, child->name);
 		}
 
 		ret = of_property_read_u32(child, "timeout_ms", &milliseconds);
 		if (ret < 0) {
 			dev_info(&ofdev->dev, "no property timeout for child of FPGA interrupt controller\n");
 		} else {
-			printk(KERN_INFO "interrupt #%d timeout = %d\n", index, milliseconds);
+			PRINTK_COND(KERN_INFO "interrupt #%d timeout = %d\n", index, milliseconds);
 			fid[index].default_timeout = (milliseconds * HZ) / 1000;
 		}
 
@@ -587,7 +465,7 @@ static int intc_of_probe(struct platform_device *ofdev)
 
 	intc_reset();
 
-	printk(KERN_INFO "<%s> init: registered\n", DEVICE_NAME);
+	PRINTK_COND(KERN_INFO "<%s> init: registered\n", DEVICE_NAME);
 
 	return 0;
 }

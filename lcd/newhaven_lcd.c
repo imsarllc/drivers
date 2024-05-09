@@ -434,7 +434,7 @@ static void lcd_close(struct tty_struct *tty, struct file *filp)
 		tty_port_tty_set(&lcd_data->port, NULL);
 }
 
-static int lcd_write_room(struct tty_struct *tty)
+static unsigned int lcd_write_room(struct tty_struct *tty)
 {
 	struct lcd *lcd_data = tty->driver_data;
 
@@ -495,9 +495,11 @@ static int lcd_probe(struct i2c_client *client,
 
 	dev_set_drvdata(&client->dev, lcd_data);
 	tty_port_init(&lcd_data->port);
-	lcd_tty_driver = alloc_tty_driver(MAX_LCDS);
-	if (!lcd_tty_driver)
-		goto err_driver;
+	lcd_tty_driver = tty_alloc_driver(MAX_LCDS, 0);
+	if (IS_ERR(lcd_tty_driver))
+	{
+		return PTR_ERR(lcd_tty_driver);
+	}
 
 	lcd_tty_driver->driver_name  = DRV_NAME;
 	lcd_tty_driver->name         = DEV_NAME;
@@ -523,7 +525,7 @@ static int lcd_probe(struct i2c_client *client,
 	return 0;
 
 err_register:
-	put_tty_driver(lcd_data->lcd_tty_driver);
+	tty_driver_kref_put(lcd_data->lcd_tty_driver);
 err_driver:
 	kfree(buffer);
 err_devtree:
@@ -537,7 +539,7 @@ static int __exit lcd_remove(struct i2c_client *client)
 	lcd_cmd_display_off(lcd_data);
 
 	tty_unregister_driver(lcd_data->lcd_tty_driver);
-	put_tty_driver(lcd_data->lcd_tty_driver);
+	tty_driver_kref_put(lcd_data->lcd_tty_driver);
 	kfree(lcd_data->buffer);
 
 	return 0;

@@ -6,6 +6,3 @@ $(DRIVER)-y := \
 		xvc_driver.o
 
 obj-m += $(DRIVER).o
-
-PWD := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
-include $(PWD)/../drivers.mk
