@@ -53,11 +53,8 @@ struct imdma_transfer_spec
 // IOCTL options
 
 // Transfer ioctls
-// #define IMDMA_TRANSFER_NOW _IOW('a', 'n', struct imdma_transfer_spec *)    // start and finish a transfer (blocking)
-#define IMDMA_TRANSFER_START _IOW('a', 's', struct imdma_transfer_spec *) // start a transfer (non-blocking)
-// #define IMDMA_TRANSFER_CHECK _IOW('a', 'e', struct imdma_transfer_spec *)  // check status of transfer (non-blocking)
+#define IMDMA_TRANSFER_START _IOW('a', 's', struct imdma_transfer_spec *)  // start a transfer (non-blocking)
 #define IMDMA_TRANSFER_FINISH _IOW('a', 'f', struct imdma_transfer_spec *) // wait for a transfer to finish (blocking)
-// #define IMDMA_TRANSFER_CANCEL _IOW('a', 'c', struct imdma_transfer_spec *) // cancel an transfer (non-blocking)
 
 // Buffer control/status ioctls
 #define IMDMA_BUFFER_GET_SPEC _IOW('a', 'b', struct imdma_buffer_spec *) // get the buffer count, size
