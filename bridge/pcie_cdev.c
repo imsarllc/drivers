@@ -230,70 +230,49 @@ static struct attribute *nail_attrs[] = {
 };
 ATTRIBUTE_GROUPS(nail);
 
-static void destroy_cdev(struct pci_dev *pci_dev)
-{
-	struct nail_info *nail;
-	int ii = 0;
-
-	nail = ((struct imsar_pcie *)pci_get_drvdata(pci_dev))->nail;
-
-	if (!nail)
-		return;
-
-	cdev_del(&nail->cdev);
-
-	for (ii = 0; ii < nail->cdev_count; ii++) {
-		devm_iounmap(&pci_dev->dev, nail->info[ii].vaddr);
-		device_destroy(nail->cls, nail->info[ii].dev_num);
-	}
-
-	class_destroy(nail->cls);
-
-	unregister_chrdev_region(nail->info[0].dev_num, nail->cdev_count);
-
-	kfree(nail->info);
-	kfree(nail);
-
-	((struct imsar_pcie *)pci_get_drvdata(pci_dev))->nail = NULL;
-}
-
-static int create_cdev(struct pci_dev *pci_dev, struct device_node *nail_node)
+static int imsar_pcie_create_cdev(struct pci_dev *pci_dev, struct device_node *nail_node)
 {
 	const int MINOR_BASE = 0;
-	dev_t dev_num;
-	int child_count = of_get_child_count(nail_node);
 	int rv = -EIO;
-	// struct class *cls;
+	dev_t dev_num;
+	struct class *cls;
 	struct nail_info *nail;
 	struct device_node *child;
 	u32 index = 0;
+	u32 ii = 0;
+	int child_count = of_get_child_count(nail_node);
+	struct imsar_pcie *drvdata = (struct imsar_pcie *)pci_get_drvdata(pci_dev);
 	u64 base_addr = pci_resource_start(pci_dev, NAIL_BAR);
 
-	nail = kzalloc(sizeof(struct nail_info), GFP_KERNEL);
-	if (!nail)
-		return -ENOMEM;
-	nail->info = kzalloc((child_count + 1) * sizeof(struct cdev_info), GFP_KERNEL);
-	if (!nail->info) {
-		kfree(nail);
+	nail = devm_kzalloc(&pci_dev->dev, sizeof(struct nail_info), GFP_KERNEL);
+	if (!nail) {
 		return -ENOMEM;
 	}
-	nail->magic = MAGIC_CHAR;
-	((struct imsar_pcie *)pci_get_drvdata(pci_dev))->nail = nail;
 
+	nail->info = devm_kzalloc(&pci_dev->dev, (child_count + 1) * sizeof(struct cdev_info),
+				  GFP_KERNEL);
+	if (!nail->info) {
+		return -ENOMEM;
+	}
+
+	drvdata->nail = nail;
+
+	nail->magic = MAGIC_CHAR;
 	nail->cdev_count = child_count;
 
-	if ((rv = alloc_chrdev_region(&dev_num, MINOR_BASE, child_count, CDEV_NAME))) {
-		pr_err("Unable to allocate cdev region %d.\n", rv);
+	rv = alloc_chrdev_region(&dev_num, MINOR_BASE, child_count, CDEV_NAME);
+	if (rv) {
+		dev_err(&pci_dev->dev, "Unable to allocate cdev region %d.\n", rv);
 		goto cleanup_mem;
 	}
 
 	nail->cls = class_create(THIS_MODULE, CDEV_NAME);
 	if (!nail->cls) {
-		pr_err("Unable to create cdev class\n");
+		dev_err(&pci_dev->dev, "Unable to create cdev class\n");
 		rv = -ENOMEM;
 		goto cleanup_chrdev;
 	}
-	nail->cls->dev_groups = nail_groups;
+	// nail->cls->dev_groups = nail_groups;
 
 	for_each_child_of_node (nail_node, child) {
 		u32 reg_prop[2];
@@ -303,13 +282,13 @@ static int create_cdev(struct pci_dev *pci_dev, struct device_node *nail_node)
 		dev_t child_dev = MKDEV(MAJOR(dev_num), MINOR(dev_num) + index);
 		device = device_create(nail->cls, NULL, child_dev, nail, "nail%d", index);
 		if (IS_ERR_OR_NULL(device)) {
-			pr_err("Unable to create device\n");
+			dev_err(&pci_dev->dev, "Unable to create device\n");
 			rv = -EIO;
 			goto cleanup_class;
 		}
 
 		if (of_property_read_u32_array(child, "reg", reg_prop, 2)) {
-			pr_err("Unable to get reg for %s\n", child->name);
+			dev_err(&pci_dev->dev, "Unable to get reg for %s\n", child->name);
 		} else {
 			cdev->addr = reg_prop[0] + base_addr;
 			cdev->size = reg_prop[1];
@@ -320,44 +299,67 @@ static int create_cdev(struct pci_dev *pci_dev, struct device_node *nail_node)
 		cdev->name = child->name;
 		cdev->dev_num = child_dev;
 
+		dev_dbg(&pci_dev->dev, "Address of %s is %llx, size = %lld\n", cdev->name,
+			cdev->addr, cdev->size);
+
 		index++;
 	}
 
-	for (index = 0; index < nail->cdev_count; index++) {
-		struct cdev_info *cdev = &nail->info[index];
-		// TODO: make this pr_debug
-		pr_info("Address of %s is %llx, size = %lld\n", cdev->name, cdev->addr, cdev->size);
-	}
-
 	cdev_init(&nail->cdev, &fops);
-	if (cdev_add(&nail->cdev, dev_num, nail->cdev_count))
+	if (cdev_add(&nail->cdev, dev_num, nail->cdev_count)) {
 		goto cleanup;
+	}
 
 	return 0;
 
 cleanup:
-// Assume we created all or none of the devices.
-// TODO: use index to destroy the children backwards.
 cleanup_class:
+	for (ii = 0; ii < index; ii++) {
+		device_destroy(nail->cls, nail->info[ii].dev_num);
+	}
+
 	class_destroy(nail->cls);
 cleanup_chrdev:
 	unregister_chrdev_region(dev_num, nail->cdev_count);
 cleanup_mem:
-	kfree(nail->info);
-	kfree(nail);
-
-	((struct imsar_pcie *)pci_get_drvdata(pci_dev))->nail = NULL;
+	drvdata->nail = NULL;
 
 	return rv;
 }
 
-int imsar_setup_nail(struct pci_dev *dev, struct device_node *fpga_node)
+static void imsar_pcie_destroy_cdev(struct pci_dev *pci_dev)
+{
+	struct nail_info *nail;
+	struct imsar_pcie *drvdata = (struct imsar_pcie *)pci_get_drvdata(pci_dev);
+	int ii;
+
+	nail = drvdata->nail;
+	if (!nail) {
+		return;
+	}
+
+	cdev_del(&nail->cdev);
+
+	for (ii = 0; ii < nail->cdev_count; ii++) {
+		device_destroy(nail->cls, nail->info[ii].dev_num);
+	}
+
+	class_destroy(nail->cls);
+
+	unregister_chrdev_region(nail->info[0].dev_num, nail->cdev_count);
+
+	drvdata->nail = NULL;
+}
+
+int imsar_pcie_setup_nail(struct pci_dev *dev, struct device_node *fpga_node)
 {
 	struct device_node *nail_node;
 	int rv = 0;
 
+	dev_info(&dev->dev, "imsar_pcie_setup_nail\n");
+
 	if (pci_request_region(dev, NAIL_BAR, "bar3_msi_int")) {
-		dev_err(&(dev->dev), "pci_request_region\n");
+		dev_err(&dev->dev, "pci_request_region\n");
 		return -ENOMEM;
 	}
 
@@ -367,15 +369,15 @@ int imsar_setup_nail(struct pci_dev *dev, struct device_node *fpga_node)
 		return -1;
 	}
 
-	rv = create_cdev(dev, nail_node);
+	rv = imsar_pcie_create_cdev(dev, nail_node);
 	if (rv)
 		return rv;
 
 	return 0;
 }
 
-void imsar_cleanup_nail(struct pci_dev *dev)
+void imsar_pcie_cleanup_nail(struct pci_dev *dev)
 {
-	destroy_cdev(dev);
+	imsar_pcie_destroy_cdev(dev);
 	pci_release_region(dev, NAIL_BAR);
 }

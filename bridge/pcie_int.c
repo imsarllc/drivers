@@ -159,7 +159,7 @@ static void irq_flow_handler(struct irq_desc *desc)
 	chained_irq_exit(chip, desc);
 }
 
-int imsar_setup_interrupts(struct pci_dev *dev, struct device_node *fpga_node)
+int imsar_pcie_setup_interrupts(struct pci_dev *dev, struct device_node *fpga_node)
 {
 	u16 id;
 	u16 version;
@@ -239,7 +239,7 @@ int imsar_setup_interrupts(struct pci_dev *dev, struct device_node *fpga_node)
 	return rv;
 }
 
-void imsar_cleanup_interrupts(struct pci_dev *dev)
+void imsar_pcie_cleanup_interrupts(struct pci_dev *dev)
 {
 	struct intc_info *intc_info;
 	intc_info = ((struct imsar_pcie *)pci_get_drvdata(dev))->intc_info;

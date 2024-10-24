@@ -15,8 +15,8 @@ struct imsar_pcie {
 	struct intc_info *intc_info;
 };
 
-int imsar_setup_interrupts(struct pci_dev *dev, struct device_node *fpga_node);
-void imsar_cleanup_interrupts(struct pci_dev *dev);
+int imsar_pcie_setup_interrupts(struct pci_dev *dev, struct device_node *fpga_node);
+void imsar_pcie_cleanup_interrupts(struct pci_dev *dev);
 
-int imsar_setup_nail(struct pci_dev *dev, struct device_node *fpga_node);
-void imsar_cleanup_nail(struct pci_dev *dev);
+int imsar_pcie_setup_nail(struct pci_dev *dev, struct device_node *fpga_node);
+void imsar_pcie_cleanup_nail(struct pci_dev *dev);

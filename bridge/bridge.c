@@ -8,9 +8,11 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 
-static int setup_axil(struct pci_dev *dev, struct device_node *fpga_node)
+static int imsar_pcie_setup_axil(struct pci_dev *dev, struct device_node *fpga_node)
 {
-	u64 taddr;
+	u64 dt_addr;
+	u64 act_addr;
+	// __be32 start_addr;
 	u32 bytes[3] = { 0 };
 	__be32 *start_addr = (__be32 *)bytes;
 	struct device_node *axil_node;
@@ -18,37 +20,43 @@ static int setup_axil(struct pci_dev *dev, struct device_node *fpga_node)
 
 	axil_node = of_get_child_by_name(fpga_node, "axilite");
 	if (!axil_node) {
-		pr_err("Didn't find axilite child node.  No child devices will be enabled\n");
+		dev_err(&dev->dev,
+			"Didn't find axilite child node.  No child devices will be enabled\n");
 		return -ENOENT;
 	}
 
-	taddr = of_translate_address(axil_node, start_addr);
-	if (taddr != pci_resource_start(dev, AXIL_BAR)) {
-		pr_err("DT (%llx) is not consistent with actual BAR (%llx).  Update the device tree\n",
-		       taddr, pci_resource_start(dev, AXIL_BAR));
+	dt_addr = of_translate_address(axil_node, start_addr);
+	act_addr = pci_resource_start(dev, AXIL_BAR);
+	if (dt_addr != act_addr) {
+		dev_err(&dev->dev,
+			"DT (%llx) is not consistent with actual BAR (%llx). Update the device tree\n",
+			dt_addr, act_addr);
 		return -EFAULT;
 	}
 
-	pr_info("DT is consistent with actual BAR.  Good guess work!\n");
+	dev_info(&dev->dev, "DT is consistent with actual BAR.  Good guess work!\n");
 
-	if ((rv = of_platform_default_populate(fpga_node, NULL, &dev->dev))) {
-		pr_err("platform_populate failed\n");
+	rv = of_platform_default_populate(fpga_node, NULL, &dev->dev);
+	if (rv) {
+		dev_err(&dev->dev, "platform_populate failed\n");
 		return rv;
 	}
+
 	return 0;
 }
 
-static void cleanup_axil(struct pci_dev *dev)
+static void imsar_pcie_cleanup_axil(struct pci_dev *dev)
 {
 	of_platform_depopulate(&dev->dev);
 }
 
-static int probe(struct pci_dev *dev, const struct pci_device_id *id)
+static int imsar_pcie_probe(struct pci_dev *dev, const struct pci_device_id *id)
 {
-	struct device_node *fpga_node;
 	struct imsar_pcie *drvdata;
+	struct device_node *fpga_node;
 
-	pr_info("probe\n");
+	dev_info(&dev->dev, "probe\n");
+
 	if (pci_enable_device(dev) < 0) {
 		dev_err(&(dev->dev), "pci_enable_device\n");
 		goto error;
@@ -59,23 +67,23 @@ static int probe(struct pci_dev *dev, const struct pci_device_id *id)
 	if (!pci_set_dma_mask(dev, DMA_BIT_MASK(32))) {
 		pci_set_consistent_dma_mask(dev, DMA_BIT_MASK(32));
 	} else {
-		pr_err("No suitable DMA mask\n");
+		dev_err(&dev->dev, "No suitable DMA mask\n");
 	}
 
-	drvdata = kzalloc(sizeof(struct imsar_pcie), GFP_KERNEL);
+	drvdata = devm_kzalloc(&dev->dev, sizeof(struct imsar_pcie), GFP_KERNEL);
 	drvdata->pci = dev;
 	pci_set_drvdata(dev, drvdata);
 
 	fpga_node = of_find_compatible_node(NULL, NULL, "pci10ee_9034");
 	if (fpga_node) {
 		dev->dev.of_node = fpga_node;
-		imsar_setup_nail(dev, fpga_node);
-		setup_axil(dev, fpga_node);
-		// Interrupt controller is on the axi-lite bus, but
-		// axil devices need interrupts enabled.
-		imsar_setup_interrupts(dev, fpga_node);
+		imsar_pcie_setup_nail(dev, fpga_node);
+		imsar_pcie_setup_axil(dev, fpga_node);
+		// 	// Interrupt controller is on the axi-lite bus, but
+		// 	// axil devices need interrupts enabled.
+		// 	imsar_pcie_setup_interrupts(dev, fpga_node);
 	} else {
-		pr_err("Didn't find fpga node.  No children enabled\n");
+		dev_err(&dev->dev, "Didn't find fpga node.  No children enabled\n");
 	}
 
 	return 0;
@@ -83,49 +91,32 @@ error:
 	return -1;
 }
 
-static void remove(struct pci_dev *dev)
+static void imsar_pcie_remove(struct pci_dev *dev)
 {
-	pr_info("remove\n");
+	dev_info(&dev->dev, "remove\n");
 
-	cleanup_axil(dev);
-	imsar_cleanup_nail(dev);
-	imsar_cleanup_interrupts(dev);
+	// imsar_pcie_cleanup_interrupts(dev);
+	imsar_pcie_cleanup_axil(dev);
+	imsar_pcie_cleanup_nail(dev);
 
 	pci_clear_master(dev);
 	pci_disable_device(dev);
 }
 
-#define VENDOR_ID 0x10ee
-#define DEVICE_ID 0x9034
-
-static struct pci_device_id id_table[] = {
-	{ PCI_DEVICE(VENDOR_ID, DEVICE_ID) },
+static struct pci_device_id imsar_pcie_id_table[] = {
+	{ PCI_DEVICE(0x10ee, 0x9034) },
 	{},
 };
 
-MODULE_DEVICE_TABLE(pci, id_table);
+MODULE_DEVICE_TABLE(pci, imsar_pcie_id_table);
 
 static struct pci_driver pci_driver = {
 	.name = "imsar_pcie",
-	.id_table = id_table,
-	.probe = probe,
-	.remove = remove,
+	.id_table = imsar_pcie_id_table,
+	.probe = imsar_pcie_probe,
+	.remove = imsar_pcie_remove,
 };
 
-static int myinit(void)
-{
-	if (pci_register_driver(&pci_driver) < 0) {
-		return 1;
-	}
-	return 0;
-}
-
-static void myexit(void)
-{
-	pci_unregister_driver(&pci_driver);
-}
-
-module_init(myinit);
-module_exit(myexit);
+module_pci_driver(pci_driver);
 
 MODULE_LICENSE("GPL");
