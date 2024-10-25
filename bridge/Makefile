@@ -1,9 +1,9 @@
 # obj-m += iio_test.o
-obj-m += interrupt_cdev.o
+obj-m += imsar_pcie_interrupt_cdev.o
 # obj-m += dma/dma-axi-dmac.o
 
-imsar-objs := bridge.o pcie_int.o pcie_cdev.o
-obj-m += imsar.o
+imsar_pcie-objs := imsar_pcie_bridge.o imsar_pcie_int.o imsar_pcie_cdev.o
+obj-m += imsar_pcie.o
 
 # xilinx-xadc-y := xilinx-xadc-core.o xilinx-xadc-events.o
 # obj-m += xilinx-xadc.o

@@ -6,13 +6,13 @@
 #define BRIDGE_BAR 2
 #define INT_BAR 3
 
-struct nail_info;
-struct intc_info;
+struct imsar_pcie_nail_info;
+struct imsar_pcie_intc_info;
 
 struct imsar_pcie {
 	struct pci_dev *pci;
-	struct nail_info *nail;
-	struct intc_info *intc_info;
+	struct imsar_pcie_nail_info *nail;
+	struct imsar_pcie_intc_info *intc_info;
 };
 
 int imsar_pcie_setup_interrupts(struct pci_dev *dev, struct device_node *fpga_node);

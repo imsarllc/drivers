@@ -1,4 +1,4 @@
-#include "pcie_bridge.h"
+#include "imsar_pcie_bridge.h"
 
 #include <linux/platform_device.h>
 #include <linux/of.h>
@@ -79,9 +79,9 @@ static int imsar_pcie_probe(struct pci_dev *dev, const struct pci_device_id *id)
 		dev->dev.of_node = fpga_node;
 		imsar_pcie_setup_nail(dev, fpga_node);
 		imsar_pcie_setup_axil(dev, fpga_node);
-		// 	// Interrupt controller is on the axi-lite bus, but
-		// 	// axil devices need interrupts enabled.
-		// 	imsar_pcie_setup_interrupts(dev, fpga_node);
+		// Interrupt controller is on the axi-lite bus, but
+		// axil devices need interrupts enabled.
+		imsar_pcie_setup_interrupts(dev, fpga_node);
 	} else {
 		dev_err(&dev->dev, "Didn't find fpga node.  No children enabled\n");
 	}
@@ -95,7 +95,7 @@ static void imsar_pcie_remove(struct pci_dev *dev)
 {
 	dev_info(&dev->dev, "remove\n");
 
-	// imsar_pcie_cleanup_interrupts(dev);
+	imsar_pcie_cleanup_interrupts(dev);
 	imsar_pcie_cleanup_axil(dev);
 	imsar_pcie_cleanup_nail(dev);
 

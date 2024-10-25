@@ -1,4 +1,4 @@
-#include "pcie_bridge.h"
+#include "imsar_pcie_bridge.h"
 
 #include <asm/uaccess.h>
 #include <linux/cdev.h>
@@ -11,7 +11,7 @@
 #define CDEV_NAME "imsar_nail"
 #define MAGIC_CHAR 0xAACC5533UL
 
-struct cdev_info {
+struct imsar_pcie_cdev_info {
 	const char *name;
 	dev_t dev_num;
 	phys_addr_t addr;
@@ -20,22 +20,22 @@ struct cdev_info {
 	void __iomem *vaddr;
 };
 
-struct nail_info {
+struct imsar_pcie_nail_info {
 	struct cdev cdev;
-	struct cdev_info *info;
+	struct imsar_pcie_cdev_info *info;
 	int cdev_count;
 	struct class *cls;
 	unsigned long magic;
 	// int major;
 };
 
-static int char_open(struct inode *inode, struct file *file)
+static int imsar_pcie_cdev_open(struct inode *inode, struct file *file)
 {
-	struct nail_info *nail;
+	struct imsar_pcie_nail_info *nail;
 	int index = iminor(inode);
 
 	/* pointer to containing structure of the character device inode */
-	nail = container_of(inode->i_cdev, struct nail_info, cdev);
+	nail = container_of(inode->i_cdev, struct imsar_pcie_nail_info, cdev);
 	if (nail->magic != MAGIC_CHAR) {
 		pr_err("xcdev 0x%p inode 0x%lx magic mismatch 0x%lx\n", nail, inode->i_ino,
 		       nail->magic);
@@ -47,9 +47,10 @@ static int char_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t check_transfer(struct file *file, const char __user *buf, size_t count, loff_t *pos)
+static ssize_t imsar_pcie_cdev_check_transfer(struct file *file, const char __user *buf,
+					      size_t count, loff_t *pos)
 {
-	struct cdev_info *info = file->private_data;
+	struct imsar_pcie_cdev_info *info = file->private_data;
 
 	if (count & 3) {
 		pr_err("Buffer size must be a multiple of 4 bytes. Not %ld\n", count);
@@ -68,9 +69,9 @@ static ssize_t check_transfer(struct file *file, const char __user *buf, size_t 
 	return 0;
 }
 
-static ssize_t char_read(struct file *file, char __user *buf, size_t count, loff_t *pos)
+static ssize_t imsar_pcie_cdev_read(struct file *file, char __user *buf, size_t count, loff_t *pos)
 {
-	struct cdev_info *info = file->private_data;
+	struct imsar_pcie_cdev_info *info = file->private_data;
 	int missing;
 	ssize_t rv;
 	ssize_t copied;
@@ -79,7 +80,7 @@ static ssize_t char_read(struct file *file, char __user *buf, size_t count, loff
 	if (remaining == 0)
 		return 0; //EOF
 
-	rv = check_transfer(file, buf, count, pos);
+	rv = imsar_pcie_cdev_check_transfer(file, buf, count, pos);
 	if (rv)
 		return rv;
 
@@ -94,9 +95,10 @@ static ssize_t char_read(struct file *file, char __user *buf, size_t count, loff
 	return copied;
 }
 
-static ssize_t char_write(struct file *file, const char __user *buf, size_t count, loff_t *pos)
+static ssize_t imsar_pcie_cdev_write(struct file *file, const char __user *buf, size_t count,
+				     loff_t *pos)
 {
-	struct cdev_info *info = file->private_data;
+	struct imsar_pcie_cdev_info *info = file->private_data;
 	int missing;
 	ssize_t rv;
 	ssize_t copied;
@@ -105,7 +107,7 @@ static ssize_t char_write(struct file *file, const char __user *buf, size_t coun
 	if (remaining == 0)
 		return -EFBIG;
 
-	rv = check_transfer(file, buf, count, pos);
+	rv = imsar_pcie_cdev_check_transfer(file, buf, count, pos);
 	if (rv)
 		return rv;
 
@@ -120,10 +122,10 @@ static ssize_t char_write(struct file *file, const char __user *buf, size_t coun
 	return copied;
 }
 
-static loff_t char_llseek(struct file *file, loff_t off, int whence)
+static loff_t imsar_pcie_cdev_llseek(struct file *file, loff_t off, int whence)
 {
 	loff_t newpos = 0;
-	struct cdev_info *info = file->private_data;
+	struct imsar_pcie_cdev_info *info = file->private_data;
 
 	switch (whence) {
 	case SEEK_SET:
@@ -152,9 +154,9 @@ static loff_t char_llseek(struct file *file, loff_t off, int whence)
 	return newpos;
 }
 
-static int char_mmap(struct file *file, struct vm_area_struct *vma)
+static int imsar_pcie_cdev_char_mmap(struct file *file, struct vm_area_struct *vma)
 {
-	struct cdev_info *info = file->private_data;
+	struct imsar_pcie_cdev_info *info = file->private_data;
 
 	unsigned long off;
 	unsigned long phys;
@@ -192,51 +194,51 @@ static int char_mmap(struct file *file, struct vm_area_struct *vma)
 	return 0;
 }
 
-static struct file_operations fops = {
+static struct file_operations imsar_pcie_cdev_fops = {
 	.owner = THIS_MODULE,
-	.open = char_open,
-	.read = char_read,
-	.write = char_write,
-	.llseek = char_llseek,
-	.mmap = char_mmap,
+	.open = imsar_pcie_cdev_open,
+	.read = imsar_pcie_cdev_read,
+	.write = imsar_pcie_cdev_write,
+	.llseek = imsar_pcie_cdev_llseek,
+	.mmap = imsar_pcie_cdev_char_mmap,
 };
 
 static ssize_t name_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	struct cdev_info *cdev = dev_get_drvdata(dev);
+	struct imsar_pcie_cdev_info *cdev = dev_get_drvdata(dev);
 	return sprintf(buf, "%s\n", cdev->name);
 }
 static DEVICE_ATTR_RO(name);
 
 static ssize_t addr_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	struct cdev_info *cdev = dev_get_drvdata(dev);
+	struct imsar_pcie_cdev_info *cdev = dev_get_drvdata(dev);
 	return sprintf(buf, "0x%llx\n", cdev->addr);
 }
 static DEVICE_ATTR_RO(addr);
 
 static ssize_t size_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	struct cdev_info *cdev = dev_get_drvdata(dev);
+	struct imsar_pcie_cdev_info *cdev = dev_get_drvdata(dev);
 	return sprintf(buf, "%lld\n", cdev->size);
 }
 static DEVICE_ATTR_RO(size);
 
-static struct attribute *nail_attrs[] = {
+static struct attribute *imsar_pcie_cdev_nail_attrs[] = {
 	&dev_attr_name.attr,
 	&dev_attr_addr.attr,
 	&dev_attr_size.attr,
 	NULL,
 };
-ATTRIBUTE_GROUPS(nail);
+ATTRIBUTE_GROUPS(imsar_pcie_cdev_nail);
 
 static int imsar_pcie_create_cdev(struct pci_dev *pci_dev, struct device_node *nail_node)
 {
 	const int MINOR_BASE = 0;
 	int rv = -EIO;
 	dev_t dev_num;
-	struct class *cls;
-	struct nail_info *nail;
+	// struct class *cls;
+	struct imsar_pcie_nail_info *nail;
 	struct device_node *child;
 	u32 index = 0;
 	u32 ii = 0;
@@ -244,13 +246,13 @@ static int imsar_pcie_create_cdev(struct pci_dev *pci_dev, struct device_node *n
 	struct imsar_pcie *drvdata = (struct imsar_pcie *)pci_get_drvdata(pci_dev);
 	u64 base_addr = pci_resource_start(pci_dev, NAIL_BAR);
 
-	nail = devm_kzalloc(&pci_dev->dev, sizeof(struct nail_info), GFP_KERNEL);
+	nail = devm_kzalloc(&pci_dev->dev, sizeof(struct imsar_pcie_nail_info), GFP_KERNEL);
 	if (!nail) {
 		return -ENOMEM;
 	}
 
-	nail->info = devm_kzalloc(&pci_dev->dev, (child_count + 1) * sizeof(struct cdev_info),
-				  GFP_KERNEL);
+	nail->info = devm_kzalloc(
+		&pci_dev->dev, (child_count + 1) * sizeof(struct imsar_pcie_cdev_info), GFP_KERNEL);
 	if (!nail->info) {
 		return -ENOMEM;
 	}
@@ -272,11 +274,11 @@ static int imsar_pcie_create_cdev(struct pci_dev *pci_dev, struct device_node *n
 		rv = -ENOMEM;
 		goto cleanup_chrdev;
 	}
-	// nail->cls->dev_groups = nail_groups;
+	nail->cls->dev_groups = imsar_pcie_cdev_nail_groups;
 
 	for_each_child_of_node (nail_node, child) {
 		u32 reg_prop[2];
-		struct cdev_info *cdev = &nail->info[index];
+		struct imsar_pcie_cdev_info *cdev = &nail->info[index];
 		struct device *device;
 
 		dev_t child_dev = MKDEV(MAJOR(dev_num), MINOR(dev_num) + index);
@@ -299,13 +301,13 @@ static int imsar_pcie_create_cdev(struct pci_dev *pci_dev, struct device_node *n
 		cdev->name = child->name;
 		cdev->dev_num = child_dev;
 
-		dev_dbg(&pci_dev->dev, "Address of %s is %llx, size = %lld\n", cdev->name,
-			cdev->addr, cdev->size);
+		dev_info(&pci_dev->dev, "Address of %s is %llx, size = %lld\n", cdev->name,
+			 cdev->addr, cdev->size);
 
 		index++;
 	}
 
-	cdev_init(&nail->cdev, &fops);
+	cdev_init(&nail->cdev, &imsar_pcie_cdev_fops);
 	if (cdev_add(&nail->cdev, dev_num, nail->cdev_count)) {
 		goto cleanup;
 	}
@@ -329,7 +331,7 @@ cleanup_mem:
 
 static void imsar_pcie_destroy_cdev(struct pci_dev *pci_dev)
 {
-	struct nail_info *nail;
+	struct imsar_pcie_nail_info *nail;
 	struct imsar_pcie *drvdata = (struct imsar_pcie *)pci_get_drvdata(pci_dev);
 	int ii;
 
@@ -356,7 +358,7 @@ int imsar_pcie_setup_nail(struct pci_dev *dev, struct device_node *fpga_node)
 	struct device_node *nail_node;
 	int rv = 0;
 
-	dev_info(&dev->dev, "imsar_pcie_setup_nail\n");
+	dev_dbg(&dev->dev, "imsar_pcie_setup_nail\n");
 
 	if (pci_request_region(dev, NAIL_BAR, "bar3_msi_int")) {
 		dev_err(&dev->dev, "pci_request_region\n");
