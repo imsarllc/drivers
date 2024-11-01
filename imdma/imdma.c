@@ -161,6 +161,14 @@ static struct platform_driver imdma_driver = {
     .remove = imdma_remove,
 };
 
+static const struct of_device_id imdma_device_table[] = {
+    {
+        .compatible = "imsar,dma-channel",
+    },
+    {},
+};
+MODULE_DEVICE_TABLE(of, imdma_device_table);
+
 // ------------------------------------------------------------------
 // Function definitions
 // ------------------------------------------------------------------
