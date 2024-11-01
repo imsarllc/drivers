@@ -15,7 +15,8 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
+ * USA.
  */
 
 #include <linux/cdev.h>
@@ -78,6 +79,7 @@ struct imdma_device
 	unsigned int buffer_size_bytes;        // imsar,buffer-size-bytes
 	enum dma_transfer_direction direction; // imsar,direction
 	unsigned int default_timeout_ms;       // imsar,default-timeout-ms
+	unsigned int address_width;            // 1-32 bits
 
 	// Device
 	struct device *device;
@@ -424,6 +426,8 @@ static int imdma_probe(struct platform_device *pdev)
 		return rc;
 	}
 
+	dma_set_mask_and_coherent(device_data->device, DMA_BIT_MASK(device_data->address_width));
+
 	// Request DMA channel (uses device tree "dmas" and "dma-names" properties)
 	device_data->dma_channel = dma_request_chan(device_data->device, device_data->dma_channel_name);
 	if (IS_ERR(device_data->dma_channel))
@@ -731,6 +735,13 @@ static int imdma_parse_dt(struct imdma_device *device_data)
 	{
 		dev_err(device_data->device, "missing or invalid imsar,buffer-count property\n");
 		return rc;
+	}
+
+	// Read the address width
+	rc = device_property_read_u32_array(device_data->device, "imsar,address-width", &device_data->address_width, 1);
+	if (rc)
+	{
+		device_data->address_width = 32; // 32 bits
 	}
 
 	// Read the default timeout (ms)
