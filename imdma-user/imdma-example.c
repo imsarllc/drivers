@@ -30,7 +30,7 @@ int main(int argc, const char *const argv[])
 	if (argc < 2)
 	{
 		printf("Usage: %s <device> [lengthBytes:1000]\n", argv[0]);
-		printf("Example: %s /dev/imdma/downsampled\n", argv[0]);
+		printf("Example: %s /dev/imdma_downsampled\n", argv[0]);
 		return 1;
 	}
 

@@ -77,7 +77,7 @@ int main(int argc, const char *const argv[])
 	if (argc < 2)
 	{
 		std::cout << "Usage: " << argv[0] << " <device> [lengthBytes:1000] [seconds:0]\n";
-		std::cout << "Example: " << argv[0] << " /dev/imdma/downsampled\n";
+		std::cout << "Example: " << argv[0] << " /dev/imdma_downsampled\n";
 		return 1;
 	}
 
