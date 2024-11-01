@@ -51,7 +51,6 @@ typedef struct imdma_internal_buffer_state_st
 	unsigned int length_bytes;
 } imdma_buffer_state_t;
 
-
 imdma_t *imdma_create(const char *devicePath)
 {
 	imdma_internal_t *state = calloc(1, sizeof(imdma_internal_t));
@@ -197,7 +196,7 @@ int imdma_transfer_finish_async(imdma_transfer_t *transfer)
 	// Configure the transfer
 	struct imdma_transfer_spec transferSpec = {
 	    .buffer_index = buffer->buffer_index, //
-	    .timeout_ms = 1000                    //
+	    .timeout_ms = buffer->timeout_ms      //
 	};
 
 	// Wait for transfer to finish
