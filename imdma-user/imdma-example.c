@@ -71,7 +71,7 @@ int main(int argc, const char *const argv[])
 	}
 
 	// Wait for the transfer to finish
-	int finishRc = imdma_transfer_finish_async(dmaTransfer);
+	int finishRc = imdma_transfer_finish(dmaTransfer);
 	if (finishRc != 0)
 	{
 		fprintf(stderr, "failed to finish transfer\n");

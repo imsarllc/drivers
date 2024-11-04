@@ -46,7 +46,7 @@ static unsigned int finish_transfer(imdma_transfer_t *dmaTransfer)
 {
 	// std::cout << "Waiting to finish transfer" << std::endl;
 
-	imdma_transfer_finish_async(dmaTransfer);
+	imdma_transfer_finish(dmaTransfer);
 
 	const void *dmaBuffer = imdma_transfer_get_data_const(dmaTransfer);
 	unsigned int dmaBufferLen = imdma_transfer_get_length(dmaTransfer);

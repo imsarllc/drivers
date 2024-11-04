@@ -189,7 +189,7 @@ int imdma_transfer_start_async(imdma_transfer_t *transfer)
 	return 0;
 }
 
-int imdma_transfer_finish_async(imdma_transfer_t *transfer)
+int imdma_transfer_finish(imdma_transfer_t *transfer)
 {
 	imdma_buffer_state_t *buffer = (imdma_buffer_state_t *)transfer;
 

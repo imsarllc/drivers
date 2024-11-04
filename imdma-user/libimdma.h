@@ -34,7 +34,7 @@ int imdma_transfer_start_async(imdma_transfer_t *transfer);
 /// @brief Wait for the given DMA transfer to finish
 /// @param transfer A pointer to the imdma_transfer_t returned by imdma_transfer_alloc()
 /// @return 0 on success; or non-zero on error
-int imdma_transfer_finish_async(imdma_transfer_t *transfer);
+int imdma_transfer_finish(imdma_transfer_t *transfer);
 
 /// @brief Free the given DMA transfer
 /// @param transfer A pointer to the imdma_transfer_t returned by imdma_transfer_alloc()
@@ -54,7 +54,7 @@ unsigned int imdma_transfer_get_length(imdma_transfer_t *transfer);
 int imdma_transfer_set_timeout_ms(imdma_transfer_t *transfer, unsigned int timeoutMs);
 
 /// @brief Get a (const) pointer to the data
-/// @note For incoming transfers, imdma_transfer_finish_async() must be called first
+/// @note For incoming transfers, imdma_transfer_finish() must be called first
 /// @param transfer A pointer to the imdma_transfer_t returned by imdma_transfer_alloc()
 const void *imdma_transfer_get_data_const(imdma_transfer_t *transfer);
 
