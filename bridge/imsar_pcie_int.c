@@ -43,8 +43,7 @@ static void imsar_pcie_int_axi_enable_or_unmask(struct irq_data *data)
 	unsigned long mask = 1 << data->hwirq;
 	struct imsar_pcie_intc_info *local_intc = irq_data_get_irq_chip_data(data);
 
-	dev_info(&local_intc->pci_dev->dev, "PCI: Called enable irq=%d, hw_irq=%lu\n", data->irq,
-		data->hwirq);
+	dev_info(&local_intc->pci_dev->dev, "Enable irq=%d, hw_irq=%lu\n", data->irq, data->hwirq);
 
 	// iowrite16(mask, local_intc->baseaddr + SIE);
 	/*
@@ -65,8 +64,7 @@ static void imsar_pcie_int_axi_disable_or_mask(struct irq_data *data)
 
 	struct imsar_pcie_intc_info *local_intc = irq_data_get_irq_chip_data(data);
 
-	dev_info(&local_intc->pci_dev->dev, "PCI: Called disable irq=%d, hw_irq=%lu\n", data->irq,
-		data->hwirq);
+	dev_info(&local_intc->pci_dev->dev, "Disable irq=%d, hw_irq=%lu\n", data->irq, data->hwirq);
 
 	iowrite32(mask, local_intc->x_baseaddr + X_CIE);
 }
@@ -74,19 +72,13 @@ static void imsar_pcie_int_axi_disable_or_mask(struct irq_data *data)
 static void imsar_pcie_int_axi_ack(struct irq_data *data)
 {
 	struct imsar_pcie_intc_info *local_intc = irq_data_get_irq_chip_data(data);
-
-	dev_dbg(&local_intc->pci_dev->dev, "ack: %ld\n", data->hwirq);
-
 	iowrite32(1 << data->hwirq, local_intc->x_baseaddr + X_IAR);
-	// pr_err("Ack.  Nothing to do.\n");
 }
 
 static void imsar_pcie_int_axi_mask_ack(struct irq_data *data)
 {
 	unsigned long mask = 1 << data->hwirq;
 	struct imsar_pcie_intc_info *local_intc = irq_data_get_irq_chip_data(data);
-
-	dev_dbg(&local_intc->pci_dev->dev, "disable_and_ack: %ld\n", data->hwirq);
 	iowrite32(mask, local_intc->x_baseaddr + X_CIE);
 	iowrite32(mask, local_intc->x_baseaddr + X_IAR);
 }
@@ -122,7 +114,7 @@ static int imsar_pcie_int_xintc_map(struct irq_domain *d, unsigned int irq, irq_
 	struct imsar_pcie_intc_info *local_intc = d->host_data;
 
 	dev_info(&local_intc->pci_dev->dev,
-		 "Called Interrupt map with domain name %s, irq %d & hw_irq=%ld. Host: %p\n", //
+		 "Map IRQ: domain = %s, irq = %d, hw_irq=%ld, host_data %p\n", //
 		 d->name, irq, hw, d->host_data);
 
 	// This should be set by the consumer, not the IRQ chip...

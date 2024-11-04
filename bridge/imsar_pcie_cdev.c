@@ -358,8 +358,6 @@ int imsar_pcie_setup_nail(struct pci_dev *dev, struct device_node *fpga_node)
 	struct device_node *nail_node;
 	int rv = 0;
 
-	dev_dbg(&dev->dev, "imsar_pcie_setup_nail\n");
-
 	if (pci_request_region(dev, NAIL_BAR, "bar3_msi_int")) {
 		dev_err(&dev->dev, "pci_request_region\n");
 		return -ENOMEM;
