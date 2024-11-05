@@ -8,19 +8,80 @@ extern "C"
 #include <signal.h>
 
 #include <chrono>
+#include <cstring>
 #include <iomanip>
 #include <iostream>
 #include <queue>
 #include <sstream>
 
+struct StatisticsRecorder
+{
+	StatisticsRecorder() : nextPrintTime{std::chrono::steady_clock::now() + std::chrono::seconds(1)} {}
+
+	void start() { startTime = std::chrono::steady_clock::now(); }
+
+	void stop() { stopTime = std::chrono::steady_clock::now(); }
+
+	void addTransfer(unsigned int lengthBytes)
+	{
+		totalBytes += lengthBytes;
+		bytesInLastSecond += lengthBytes;
+		totalTransfers += 1;
+		transfersInLastSecond += 1;
+	}
+
+	void printPeriodic()
+	{
+		auto now = std::chrono::steady_clock::now();
+		if (now < nextPrintTime)
+		{
+			return;
+		}
+
+		std::cout << bytesInLastSecond << " B/s " << transfersInLastSecond << " Blocks/s" << std::endl;
+
+		bytesInLastSecond = 0;
+		transfersInLastSecond = 0;
+
+		nextPrintTime = now + std::chrono::seconds(1);
+	}
+
+	void printFinal()
+	{
+		float totalMiB = static_cast<float>(totalBytes) / 1024 / 1024;    // MiB
+		float totalMb = static_cast<float>(totalBytes) * 8 / 1000 / 1000; // Mb
+		double durationSeconds = std::chrono::duration<double>(stopTime - startTime).count();
+		std::cout << "Totals: " << totalBytes << " B " << totalTransfers << " Blocks" << std::endl;
+		std::cout << durationSeconds << " seconds" << std::endl;
+		std::cout << (totalMiB / durationSeconds) << " MiB/s (" << (totalMb / durationSeconds) << " Mb/s)" << std::endl;
+	}
+
+	std::chrono::steady_clock::time_point startTime;
+	std::chrono::steady_clock::time_point stopTime;
+
+	unsigned long totalBytes{0};
+	unsigned long totalTransfers{0};
+	unsigned long bytesInLastSecond{0};
+	unsigned long transfersInLastSecond{0};
+
+	std::chrono::steady_clock::time_point nextPrintTime;
+};
+
+struct TransferEntry
+{
+	TransferEntry(imdma_transfer_t *transfer) : transfer{transfer}, startTime{std::chrono::steady_clock::now()} {}
+	imdma_transfer_t *transfer;
+	std::chrono::steady_clock::time_point startTime;
+};
+
 static bool start_transfer(imdma_transfer_t *dmaTransfer, unsigned int lengthBytes)
 {
-	// std::cout << "Starting transfer" << std::endl;
+	// std::cout << dmaTransfer << " start" << std::endl;
 
 	int setLenRc = imdma_transfer_set_length(dmaTransfer, lengthBytes);
 	if (setLenRc != 0)
 	{
-		fprintf(stderr, "failed to set transfer buffer length\n");
+		std::cerr << "failed to set transfer buffer length" << std::endl;
 		return false;
 	}
 
@@ -28,14 +89,14 @@ static bool start_transfer(imdma_transfer_t *dmaTransfer, unsigned int lengthByt
 	int startRc = imdma_transfer_start_async(dmaTransfer);
 	if (startRc != 0)
 	{
-		fprintf(stderr, "failed to start transfer\n");
+		std::cerr << "failed to start transfer" << std::endl;
 		return false;
 	}
 
 	int timeoutRc = imdma_transfer_set_timeout_ms(dmaTransfer, 3000);
 	if (timeoutRc != 0)
 	{
-		fprintf(stderr, "failed to set transfer timeout\n");
+		std::cerr << "failed to set transfer timeout" << std::endl;
 		return false;
 	}
 
@@ -44,20 +105,25 @@ static bool start_transfer(imdma_transfer_t *dmaTransfer, unsigned int lengthByt
 
 static unsigned int finish_transfer(imdma_transfer_t *dmaTransfer)
 {
-	// std::cout << "Waiting to finish transfer" << std::endl;
+	// std::cout << dmaTransfer << " wait for finish" << std::endl;
 
 	imdma_transfer_finish(dmaTransfer);
 
 	const void *dmaBuffer = imdma_transfer_get_data_const(dmaTransfer);
-	unsigned int dmaBufferLen = imdma_transfer_get_length(dmaTransfer);
-
-	imdma_transfer_free(dmaTransfer);
-
-	if (dmaBuffer == NULL || dmaBufferLen == 0)
+	if (dmaBuffer == nullptr)
 	{
-		fprintf(stderr, "bad transfer result\n");
+		std::cerr << "unable to get data buffer" << std::endl;
 		return 0;
 	}
+
+	unsigned int dmaBufferLen = imdma_transfer_get_length(dmaTransfer);
+	if (dmaBufferLen == 0)
+	{
+		std::cerr << "no data was transferred" << std::endl;
+		return 0;
+	}
+
+	imdma_transfer_free(dmaTransfer);
 
 	return dmaBufferLen;
 }
@@ -103,17 +169,16 @@ int main(int argc, const char *const argv[])
 
 	std::queue<imdma_transfer_t *> pendingTransfers;
 
-	std::chrono::steady_clock::time_point startTime = std::chrono::steady_clock::now();
+	StatisticsRecorder stats;
+
 	std::chrono::steady_clock::time_point stopTime = std::chrono::steady_clock::now() + std::chrono::seconds(seconds);
 
-	std::chrono::steady_clock::time_point nextReportTime =
-	    std::chrono::steady_clock::now() + std::chrono::milliseconds(1000);
-	unsigned long bytesPerSecond = 0;
-	unsigned long totalBytes = 0;
+	stats.start();
+
 	while (running)
 	{
 		imdma_transfer_t *dmaTransfer = imdma_transfer_alloc(imdma);
-		if (dmaTransfer != NULL)
+		if (dmaTransfer != nullptr)
 		{
 			bool started = start_transfer(dmaTransfer, lengthBytes);
 			if (!started)
@@ -126,44 +191,38 @@ int main(int argc, const char *const argv[])
 		{
 			imdma_transfer_t *finishedTransfer = pendingTransfers.front();
 			unsigned int transferredBytes = finish_transfer(finishedTransfer);
-			bytesPerSecond += transferredBytes;
-			totalBytes += transferredBytes;
 			pendingTransfers.pop();
+			if (transferredBytes != 0)
+			{
+				stats.addTransfer(transferredBytes);
+			}
 		}
+
+		stats.printPeriodic();
 
 		auto now = std::chrono::steady_clock::now();
-		if (now > nextReportTime)
-		{
-			float mbitsPerSec = (static_cast<float>(bytesPerSecond) * 8 / 1000 / 1000);
-			std::cout << std::fixed << std::setprecision(1) << mbitsPerSec << " Mbit/s" << std::endl;
-			bytesPerSecond = 0;
-			nextReportTime = std::chrono::steady_clock::now() + std::chrono::milliseconds(1000);
-		}
-
 		if (seconds != 0 && now > stopTime)
 		{
 			break;
 		}
 	}
 
-	while (pendingTransfers.size())
+	// Finishing remaining pending transfers
+	while (pendingTransfers.size() > 0)
 	{
 		imdma_transfer_t *finishedTransfer = pendingTransfers.front();
 		unsigned int transferredBytes = finish_transfer(finishedTransfer);
-		bytesPerSecond += transferredBytes;
-		totalBytes += transferredBytes;
 		pendingTransfers.pop();
+		if (transferredBytes != 0)
+		{
+			stats.addTransfer(transferredBytes);
+		}
+		stats.printPeriodic();
 	}
 
-	std::chrono::steady_clock::time_point endTime = std::chrono::steady_clock::now();
+	stats.stop();
 
-	double durationSecs = std::chrono::duration_cast<std::chrono::seconds>(endTime - startTime).count();
-
-	float mbitsPerSec = (static_cast<float>(totalBytes) * 8 / 1000 / 1000) / durationSecs;
-
-	// std::cout << totalBytes << " bytes" << std::endl;
-	// std::cout << durationSecs << " seconds" << std::endl;
-	std::cout << mbitsPerSec << " avg Mbits/s" << std::endl;
+	stats.printFinal();
 
 	imdma_free(imdma);
 
