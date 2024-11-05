@@ -259,7 +259,7 @@ static long imdma_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	struct imdma_device *device_data = (struct imdma_device *)file->private_data;
 
-	dev_dbg(device_data->device, "imdma_ioctl(..., %u, %px)", cmd, (void *)arg);
+	// dev_dbg(device_data->device, "imdma_ioctl(..., %u, %px)", cmd, (void *)arg);
 
 	switch (cmd)
 	{
@@ -282,7 +282,7 @@ static long imdma_ioctl_transfer_start(struct imdma_device *device_data, unsigne
 	int rc;
 	struct imdma_transfer_spec transfer_spec;
 
-	dev_dbg(device_data->device, "imdma_ioctl_transfer_start(..., %px)", (void *)arg);
+	// dev_dbg(device_data->device, "imdma_ioctl_transfer_start(..., %px)", (void *)arg);
 
 	if (copy_from_user(&transfer_spec, (struct imdma_transfer_spec *)arg, sizeof(transfer_spec)))
 	{
@@ -337,7 +337,7 @@ static long imdma_ioctl_transfer_finish(struct imdma_device *device_data, unsign
 	int rc;
 	struct imdma_transfer_spec transfer_spec;
 
-	dev_dbg(device_data->device, "imdma_ioctl_transfer_finish(..., %px)", (void *)arg);
+	// dev_dbg(device_data->device, "imdma_ioctl_transfer_finish(..., %px)", (void *)arg);
 
 	if (copy_from_user(&transfer_spec, (struct imdma_transfer_spec *)arg, sizeof(transfer_spec)))
 	{
@@ -550,7 +550,7 @@ static int imdma_start_transfer(struct imdma_device *device_data, struct imdma_t
 	// Initialize the completion
 	init_completion(&device_data->buffer_statuses[buffer_index].cmp);
 
-	// Attempt to submit the SG to the DMA engine
+	// Submit the transfer (SG) to the DMA engine (this queues up the transfer)
 	device_data->buffer_statuses[buffer_index].cookie = dmaengine_submit(chan_desc);
 
 	// Check for failures
@@ -560,7 +560,8 @@ static int imdma_start_transfer(struct imdma_device *device_data, struct imdma_t
 		return -1;
 	}
 
-	// Finally, issue the DMA
+	// Start any pending transfers
+	// Note: if a transfer is in progress, the next transfer will be started at the completion of the current transfer.
 	dma_async_issue_pending(device_data->dma_channel);
 
 	return 0;
@@ -583,6 +584,10 @@ static void imdma_wait_for_transfer(struct imdma_device *device_data, struct imd
 	}
 
 	timeout_jiffies = msecs_to_jiffies(timeout_ms);
+
+	dev_dbg(device_data->char_dev_device, "wait_for_transfer: buffer_index = %d, dma_handle = 0x%px, length = %u",
+	        buffer_index, (void *)device_data->buffer_statuses[buffer_index].dma_handle,
+	        device_data->buffer_statuses[buffer_index].length_bytes);
 
 	// Wait for the transaction to complete, or timeout, or get an error
 	timeout_jiffies = wait_for_completion_timeout(&device_data->buffer_statuses[buffer_index].cmp, timeout_jiffies);
