@@ -189,7 +189,7 @@ int imdma_transfer_start_async(imdma_transfer_t *transfer)
 	return 0;
 }
 
-int imdma_transfer_finish_async(imdma_transfer_t *transfer)
+int imdma_transfer_finish(imdma_transfer_t *transfer)
 {
 	imdma_buffer_state_t *buffer = (imdma_buffer_state_t *)transfer;
 
@@ -211,7 +211,7 @@ int imdma_transfer_finish_async(imdma_transfer_t *transfer)
 
 	if (transferSpec.status != IMDMA_STATUS_COMPLETE)
 	{
-		fprintf(stderr, "Transfer failed: status = %u\n", transferSpec.status);
+		fprintf(stderr, LIBIMDMA_NAME ": transfer failed: status = %u\n", transferSpec.status);
 		buffer->length_bytes = 0;
 		return -transferSpec.status;
 	}

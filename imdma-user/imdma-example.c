@@ -3,8 +3,11 @@
 
 #include "libimdma.h"
 
+#include <inttypes.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 
@@ -25,11 +28,21 @@ static void printHexDump(const void *start, unsigned int length_bytes)
 	printf("\n");
 }
 
+static void print64BitLongs(const void *start, unsigned int length_bytes)
+{
+	const uint64_t *buf = (const uint64_t *)start;
+	unsigned int word_count = length_bytes / sizeof(uint64_t);
+	for (unsigned int i = 0; i < word_count; i++)
+	{
+		printf("%lu\n", buf[i]);
+	}
+}
+
 int main(int argc, const char *const argv[])
 {
 	if (argc < 2)
 	{
-		printf("Usage: %s <device> [lengthBytes:1000]\n", argv[0]);
+		printf("Usage: %s <device> [lengthBytes:1000] [print:off|u64|x|fl]\n", argv[0]);
 		printf("Example: %s /dev/imdma_downsampled\n", argv[0]);
 		return 1;
 	}
@@ -47,6 +60,12 @@ int main(int argc, const char *const argv[])
 	{
 		lengthBytes = strtoul(argv[2], NULL, 10);
 	}
+
+	const char *printType = argc >= 4 ? argv[3] : "off";
+
+	// printf("Device: %s\n", devicePath);
+	// printf("Length: %u\n", lengthBytes);
+	// printf("Print: %s\n", printType);
 
 	imdma_transfer_t *dmaTransfer = imdma_transfer_alloc(imdma);
 	if (dmaTransfer == NULL)
@@ -71,7 +90,7 @@ int main(int argc, const char *const argv[])
 	}
 
 	// Wait for the transfer to finish
-	int finishRc = imdma_transfer_finish_async(dmaTransfer);
+	int finishRc = imdma_transfer_finish(dmaTransfer);
 	if (finishRc != 0)
 	{
 		fprintf(stderr, "failed to finish transfer\n");
@@ -88,7 +107,21 @@ int main(int argc, const char *const argv[])
 	}
 
 	// Use the data (access to this data MAY be uncached -- avoid repeated reads)
-	printHexDump(dmaBuffer, dmaBufferLen);
+	if (strcmp(printType, "x") == 0)
+	{
+		printHexDump(dmaBuffer, dmaBufferLen);
+	}
+	else if (strcmp(printType, "u64") == 0)
+	{
+		print64BitLongs(dmaBuffer, dmaBufferLen);
+	}
+	else if (strcmp(printType, "fl") == 0)
+	{
+		uint64_t first, last;
+		memcpy(&first, dmaBuffer, sizeof(first));
+		memcpy(&last, dmaBuffer + dmaBufferLen - sizeof(last), sizeof(last));
+		printf("%012" PRIu64 " to %012" PRIu64 "\n", first, last);
+	}
 
 	imdma_transfer_free(dmaTransfer);
 
