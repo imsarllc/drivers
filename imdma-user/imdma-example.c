@@ -99,11 +99,10 @@ int main(int argc, const char *const argv[])
 
 	const void *dmaBuffer = imdma_transfer_get_data_const(dmaTransfer);
 	unsigned int dmaBufferLen = imdma_transfer_get_length(dmaTransfer);
-	unsigned int bufferIndex = imdma_transfer_get_buffer_index(dmaTransfer);
 
 	if (dmaBuffer == NULL || dmaBufferLen == 0)
 	{
-		fprintf(stderr, "bad transfer result: buf=%p (%u), len=%u\n", dmaBuffer, bufferIndex, dmaBufferLen);
+		fprintf(stderr, "bad transfer result: buf=%p, len=%u\n", dmaBuffer, dmaBufferLen);
 		return -1;
 	}
 
