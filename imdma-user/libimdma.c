@@ -211,7 +211,7 @@ int imdma_transfer_finish(imdma_transfer_t *transfer)
 
 	if (transferSpec.status != IMDMA_STATUS_COMPLETE)
 	{
-		fprintf(stderr, "Transfer failed: status = %u\n", transferSpec.status);
+		fprintf(stderr, LIBIMDMA_NAME ": transfer failed: status = %u\n", transferSpec.status);
 		buffer->length_bytes = 0;
 		return -transferSpec.status;
 	}
