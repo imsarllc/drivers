@@ -179,7 +179,7 @@ int imsar_pcie_setup_interrupts(struct pci_dev *dev, struct device_node *fpga_no
 	intc_info->pci_dev = dev;
 	drv_data->intc_info = intc_info;
 
-	axi_intc_node = of_find_compatible_node(NULL, NULL, "pcie_axi_intc");
+	axi_intc_node = of_find_compatible_node(NULL, NULL, "imsar,pcie_axi_intc");
 	if (!axi_intc_node) {
 		dev_err(&dev->dev,
 			"Didn't find axi intc expander child node. Interrupts will be disabled\n");

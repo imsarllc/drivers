@@ -8,33 +8,88 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 
-static int imsar_pcie_setup_axil(struct pci_dev *dev, struct device_node *fpga_node)
+static int imsar_pcie_check_addresses(struct pci_dev *dev, struct device_node *fpga_node)
 {
 	u64 dt_addr;
 	u64 act_addr;
 	// __be32 start_addr;
 	u32 bytes[3] = { 0 };
 	__be32 *start_addr = (__be32 *)bytes;
-	struct device_node *axil_node;
+
+	struct device_node *fpga_child_node;
+	struct device_node *fpga_grandchild_node;
+
+	int rv = 0;
+	int bar_index_res = -1;
+	u32 bar_index = 0;
+
+	// Iterate through each child node looking for compatible="simple-bus". On each match:
+	// - Find its first child with compatible="imsar,address-check"
+	// - Retrieve PCI bar index attribute
+	// - Translate the node's address with offset 0 using DT
+	// - Retrieve PCI BAR address
+	// - Compare and flag error if mismatched
+
+	// Iterate through each child node
+	for_each_child_of_node (fpga_node, fpga_child_node) {
+		// Skip if not a simple-bus
+		if (!of_device_is_compatible(fpga_child_node, "simple-bus")) {
+			continue;
+		}
+
+		// Iterate through each grandchild node
+		for_each_child_of_node (fpga_child_node, fpga_grandchild_node) {
+			// Skip if the node is not an address check node
+			if (!of_device_is_compatible(fpga_grandchild_node, "imsar,address-check")) {
+				continue;
+			}
+
+			// Read imsar,bar-index property
+			bar_index_res = of_property_read_u32(fpga_grandchild_node,
+							     "imsar,bar-index", &bar_index);
+
+			// Set code to error and skip
+			if (bar_index_res < 0) {
+				dev_err(&dev->dev,
+					"%pOF is missing required imsar,bar-index. Please fix device tree.",
+					fpga_grandchild_node);
+				rv = -EINVAL;
+				continue;
+			}
+
+			// Translate using DT
+			dt_addr = of_translate_address(fpga_grandchild_node, start_addr);
+
+			// Retrieve actual address from PCI
+			act_addr = pci_resource_start(dev, bar_index);
+
+			// Check for match
+			if (dt_addr != act_addr) {
+				dev_err(&dev->dev,
+					"DT address for %pOF (%llx) is not consistent with actual BAR (%llx). Update the device tree\n",
+					fpga_grandchild_node, dt_addr, act_addr);
+				rv = -EFAULT;
+			} else {
+				dev_info(
+					&dev->dev,
+					"DT address for %pOF is consistent with actual BAR.  Good guess work!\n",
+					fpga_grandchild_node);
+			}
+		}
+	}
+
+	return rv;
+}
+
+static int imsar_pcie_setup_simple_buses(struct pci_dev *dev, struct device_node *fpga_node)
+{
 	int rv = 0;
 
-	axil_node = of_get_child_by_name(fpga_node, "axilite");
-	if (!axil_node) {
-		dev_err(&dev->dev,
-			"Didn't find axilite child node.  No child devices will be enabled\n");
-		return -ENOENT;
+	rv = imsar_pcie_check_addresses(dev, fpga_node);
+	if (rv) {
+		dev_err(&dev->dev, "address check failed\n");
+		return rv;
 	}
-
-	dt_addr = of_translate_address(axil_node, start_addr);
-	act_addr = pci_resource_start(dev, AXIL_BAR);
-	if (dt_addr != act_addr) {
-		dev_err(&dev->dev,
-			"DT (%llx) is not consistent with actual BAR (%llx). Update the device tree\n",
-			dt_addr, act_addr);
-		return -EFAULT;
-	}
-
-	dev_info(&dev->dev, "DT is consistent with actual BAR.  Good guess work!\n");
 
 	rv = of_platform_default_populate(fpga_node, NULL, &dev->dev);
 	if (rv) {
@@ -45,7 +100,7 @@ static int imsar_pcie_setup_axil(struct pci_dev *dev, struct device_node *fpga_n
 	return 0;
 }
 
-static void imsar_pcie_cleanup_axil(struct pci_dev *dev)
+static void imsar_pcie_cleanup_simple_buses(struct pci_dev *dev)
 {
 	of_platform_depopulate(&dev->dev);
 }
@@ -77,11 +132,8 @@ static int imsar_pcie_probe(struct pci_dev *dev, const struct pci_device_id *id)
 	fpga_node = of_find_compatible_node(NULL, NULL, "pci10ee_9034");
 	if (fpga_node) {
 		dev->dev.of_node = fpga_node;
-		imsar_pcie_setup_nail(dev, fpga_node);
-		imsar_pcie_setup_axil(dev, fpga_node);
-		// Interrupt controller is on the axi-lite bus, but
-		// axil devices need interrupts enabled.
 		imsar_pcie_setup_interrupts(dev, fpga_node);
+		imsar_pcie_setup_simple_buses(dev, fpga_node);
 	} else {
 		dev_err(&dev->dev, "Didn't find fpga node.  No children enabled\n");
 	}
@@ -95,9 +147,8 @@ static void imsar_pcie_remove(struct pci_dev *dev)
 {
 	dev_info(&dev->dev, "remove\n");
 
+	imsar_pcie_cleanup_simple_buses(dev);
 	imsar_pcie_cleanup_interrupts(dev);
-	imsar_pcie_cleanup_axil(dev);
-	imsar_pcie_cleanup_nail(dev);
 
 	pci_clear_master(dev);
 	pci_disable_device(dev);
