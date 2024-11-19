@@ -1,0 +1,2 @@
+# This file should be placed in /etc/udev/rules.d/
+SUBSYSTEM=="imsar_user_interrupt", SYMLINK+="intc/%s{name}", MODE="0666", OWNER="imsar"
