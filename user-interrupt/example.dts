@@ -1,0 +1,7 @@
+intr@11 {
+    compatible = "imsar,user-interrupt";
+    imsar,name = "my_interrupt";
+    imsar,default-timeout-ms = <1000>;
+    interrupt-parent = <&intc>;
+    interrupts = <11>;
+};
