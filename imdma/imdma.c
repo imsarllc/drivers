@@ -459,8 +459,11 @@ static int imdma_probe(struct platform_device *pdev)
 	if (IS_ERR(device_data->dma_channel))
 	{
 		rc = PTR_ERR(device_data->dma_channel);
-		dev_err(device_data->device, "request for DMA channel \"%s\" failed; rc = %d\n", device_data->dma_channel_name,
-		        rc);
+		if (rc != -EPROBE_DEFER)
+		{
+			dev_err(device_data->device, "request for DMA channel \"%s\" failed; rc = %d\n",
+			        device_data->dma_channel_name, rc);
+		}
 		device_data->dma_channel = 0;
 		return rc;
 	}
