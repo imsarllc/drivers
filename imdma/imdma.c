@@ -19,6 +19,8 @@
  * USA.
  */
 
+#include "version.h"
+
 #include <linux/cdev.h>
 #include <linux/device.h>
 #include <linux/dma-mapping.h>
@@ -40,9 +42,10 @@
 #define IMDMA_DRIVER_NAME "imdma"
 #define IMDMA_TIMEOUT_MS_MAX 30000
 
-MODULE_AUTHOR("IMSAR, LLC.");
-MODULE_DESCRIPTION("IMSAR DMA driver");
+MODULE_AUTHOR("IMSAR, LLC. Embedded Team <embedded@imsar.com>");
+MODULE_DESCRIPTION("IMSAR User Space DMA driver");
 MODULE_LICENSE("GPL v2");
+MODULE_VERSION(GIT_DESCRIBE);
 
 // ------------------------------------------------------------------
 // Data structure definitions
