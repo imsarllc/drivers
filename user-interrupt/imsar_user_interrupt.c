@@ -59,6 +59,7 @@ typedef struct
 	wait_queue_head_t file_waitqueue;
 	int interrupt_count;   // incremented when an interrupt occurs, cleared on a call to read()
 	struct list_head list; // used to link pointers for consuming_files
+	enum imsar_user_interrupt_behavior behavior;
 } imsar_user_interrupt_file_t;
 
 
@@ -82,6 +83,9 @@ static int imsar_user_interrupt_remove(struct platform_device *platform_dev);
 static int __init imsar_user_interrupt_init(void);
 static void __exit imsar_user_interrupt_exit(void);
 
+// Interrupt handling functions
+static irqreturn_t imsar_user_interrupt_handle_irq(int num, void *dev_id);
+
 // Internal helper functions
 static int imsar_user_interrupt_device_data_init(struct platform_device *platform_dev,
                                                  imsar_user_interrupt_device_t *device_data);
@@ -89,9 +93,14 @@ static int imsar_user_interrupt_char_dev_create(imsar_user_interrupt_device_t *d
 static void imsar_user_interrupt_char_dev_destroy(imsar_user_interrupt_device_t *device_data);
 static int imsar_user_interrupt_attach_irq(imsar_user_interrupt_device_t *device_data);
 static void imsar_user_interrupt_detach_irq(imsar_user_interrupt_device_t *device_data);
-static irqreturn_t imsar_user_interrupt_handle_irq(int num, void *dev_id);
+static void imsar_user_interrupt_file_init(imsar_user_interrupt_file_t *file_data,
+                                           imsar_user_interrupt_device_t *device_data);
+static int imsar_user_interrupt_consumer_add(imsar_user_interrupt_device_t *device_data,
+                                             imsar_user_interrupt_file_t *file_data);
+static int imsar_user_interrupt_consumer_remove(imsar_user_interrupt_device_t *device_data,
+                                                imsar_user_interrupt_file_t *file_data);
 
-// Attributes
+// Attribute functions
 ssize_t imsar_user_interrupt_name_show(struct device *dev, struct device_attribute *attr, char *buf);
 
 // ------------------------------------------------------------------
@@ -107,6 +116,7 @@ static struct file_operations imsar_user_interrupts_fops = {
     .write = imsar_user_interrupt_write,
     .read = imsar_user_interrupt_read,
     .poll = imsar_user_interrupt_poll,
+    .llseek = noop_llseek,
     .unlocked_ioctl = imsar_user_interrupt_ioctl,
 };
 
@@ -147,6 +157,41 @@ static const struct attribute_group *imsar_user_interrupt_attr_groups[] = {
 // Function definitions
 // ------------------------------------------------------------------
 
+static int imsar_user_interrupt_consumer_add(imsar_user_interrupt_device_t *device_data,
+                                             imsar_user_interrupt_file_t *file_data)
+{
+	int list_was_empty;
+
+	spin_lock(&device_data->consumers_spinlock);
+	list_was_empty = list_empty(&device_data->consuming_files);
+	list_add_tail(&file_data->list, &device_data->consuming_files);
+	spin_unlock(&device_data->consumers_spinlock);
+	return list_was_empty;
+}
+
+static int imsar_user_interrupt_consumer_remove(imsar_user_interrupt_device_t *device_data,
+                                                imsar_user_interrupt_file_t *file_data)
+{
+	int list_is_now_empty;
+
+	spin_lock(&device_data->consumers_spinlock);
+	list_del(&file_data->list);
+	list_is_now_empty = list_empty(&device_data->consuming_files);
+	spin_unlock(&device_data->consumers_spinlock);
+	return list_is_now_empty;
+}
+
+static void imsar_user_interrupt_file_init(imsar_user_interrupt_file_t *file_data,
+                                           imsar_user_interrupt_device_t *device_data)
+{
+	file_data->timeout_ms = device_data->default_timeout_ms;
+	file_data->interrupt_dev = device_data;
+	init_waitqueue_head(&file_data->file_waitqueue);
+	INIT_LIST_HEAD(&file_data->list);
+	file_data->interrupt_count = 0;
+	file_data->behavior = IMSAR_USER_INTERRUPT_BEHAVIOR_NEXT_ONLY;
+}
+
 static int imsar_user_interrupt_open(struct inode *inode, struct file *file)
 {
 	int rc;
@@ -163,11 +208,8 @@ static int imsar_user_interrupt_open(struct inode *inode, struct file *file)
 	}
 
 	file->private_data = file_data;
-	file_data->timeout_ms = device_data->default_timeout_ms;
-	file_data->interrupt_dev = device_data;
-	init_waitqueue_head(&file_data->file_waitqueue);
-	INIT_LIST_HEAD(&file_data->list);
-	file_data->interrupt_count = 0;
+
+	imsar_user_interrupt_file_init(file_data, device_data);
 
 	rc = mutex_lock_interruptible(&device_data->irq_change_mutex);
 	if (rc)
@@ -175,10 +217,7 @@ static int imsar_user_interrupt_open(struct inode *inode, struct file *file)
 		return -rc;
 	}
 
-	spin_lock(&device_data->consumers_spinlock);
-	list_was_empty = list_empty(&device_data->consuming_files);
-	list_add_tail(&file_data->list, &device_data->consuming_files);
-	spin_unlock(&device_data->consumers_spinlock);
+	list_was_empty = imsar_user_interrupt_consumer_add(device_data, file_data);
 
 	// Attach IRQ on first user
 	if (list_was_empty)
@@ -213,10 +252,7 @@ static int imsar_user_interrupt_release(struct inode *inode, struct file *file)
 		return -rc;
 	}
 
-	spin_lock(&device_data->consumers_spinlock);
-	list_del(&file_data->list);
-	list_is_empty = list_empty(&device_data->consuming_files);
-	spin_unlock(&device_data->consumers_spinlock);
+	list_is_empty = imsar_user_interrupt_consumer_remove(device_data, file_data);
 
 	// If there are no more users, detach the IRQ
 	if (list_is_empty)
@@ -233,7 +269,9 @@ static int imsar_user_interrupt_release(struct inode *inode, struct file *file)
 
 static ssize_t imsar_user_interrupt_write(struct file *file, const char __user *buf, size_t bytes, loff_t *ppos)
 {
-	return -ENOTSUPP;
+	imsar_user_interrupt_file_t *file_data = (imsar_user_interrupt_file_t *)file->private_data;
+	file_data->interrupt_count = 0;
+	return bytes;
 }
 
 static ssize_t imsar_user_interrupt_read(struct file *file, char __user *buf, size_t bytes, loff_t *off)
@@ -247,6 +285,17 @@ static ssize_t imsar_user_interrupt_read(struct file *file, char __user *buf, si
 
 	file_data = (imsar_user_interrupt_file_t *)file->private_data;
 	device_data = (imsar_user_interrupt_device_t *)file_data->interrupt_dev;
+
+	if (file_data->behavior == IMSAR_USER_INTERRUPT_BEHAVIOR_NEXT_ONLY)
+	{
+		if (file->f_flags & O_NONBLOCK)
+		{
+			dev_err(device_data->device, "non-blocking read not supported with behavior NEXT_ONLY");
+			return -ENOTSUPP;
+		}
+
+		file_data->interrupt_count = 0;
+	}
 
 	count = file_data->interrupt_count;
 
@@ -297,21 +346,31 @@ static unsigned int imsar_user_interrupt_poll(struct file *file, poll_table *wai
 	file_data = (imsar_user_interrupt_file_t *)file->private_data;
 	device_data = (imsar_user_interrupt_device_t *)file_data->interrupt_dev;
 
-	// NOTE: this is NOT a blocking call -- this function (imsar_user_interrupt_poll)
-	// will be called again when the wait queue is posted by the interrupt
-	poll_wait(file, &file_data->file_waitqueue, wait);
-
 	ret = 0;
+
+	if (file_data->behavior == IMSAR_USER_INTERRUPT_BEHAVIOR_NEXT_ONLY)
+	{
+		dev_err(device_data->device, "poll not supported with behavior NEXT_ONLY");
+		return POLLERR;
+	}
+
 	if (file_data->interrupt_count > 0)
 	{
 		ret = (POLLIN | POLLRDNORM);
 	}
+	else
+	{
+		// NOTE: this is NOT a blocking call -- this function (imsar_user_interrupt_poll)
+		// will be called again when the wait queue is posted by the interrupt
+		poll_wait(file, &file_data->file_waitqueue, wait);
+	}
+
 	return ret;
 }
 
 static long imsar_user_interrupt_ioctl(struct file *file, unsigned int request, unsigned long arg)
 {
-	int timeout_ms;
+	int tmp;
 	int rc;
 	imsar_user_interrupt_file_t *file_data;
 	imsar_user_interrupt_device_t *device_data;
@@ -321,16 +380,28 @@ static long imsar_user_interrupt_ioctl(struct file *file, unsigned int request, 
 
 	switch (request)
 	{
-	case IMSAR_USER_INTERRUPT_IOCTL_TIMEOUT:
+	case IMSAR_USER_INTERRUPT_IOCTL_SET_TIMEOUT_MS:
 	{
-		rc = copy_from_user(&timeout_ms, (const void __user *)arg, sizeof(int));
+		rc = copy_from_user(&tmp, (const void __user *)arg, sizeof(int));
 		if (rc)
 		{
 			return -EFAULT;
 		}
 
-		dev_info(device_data->device, "timeout: %d\n", timeout_ms);
-		file_data->timeout_ms = (timeout_ms * HZ) / 1000;
+		dev_info(device_data->device, "timeout: %d ms\n", tmp);
+		file_data->timeout_ms = (tmp * HZ) / 1000;
+		return 0;
+	}
+	case IMSAR_USER_INTERRUPT_IOCTL_SET_BEHAVIOR:
+	{
+		rc = copy_from_user(&tmp, (const void __user *)arg, sizeof(int));
+		if (rc)
+		{
+			return -EFAULT;
+		}
+
+		dev_info(device_data->device, "behavior: %d\n", tmp);
+		file_data->behavior = tmp;
 		return 0;
 	}
 	case TCGETS: // ignore terminal commands
