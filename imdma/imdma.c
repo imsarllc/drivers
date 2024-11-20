@@ -19,6 +19,8 @@
  * USA.
  */
 
+#include "version.h"
+
 #include <linux/cdev.h>
 #include <linux/device.h>
 #include <linux/dma-mapping.h>
@@ -40,9 +42,10 @@
 #define IMDMA_DRIVER_NAME "imdma"
 #define IMDMA_TIMEOUT_MS_MAX 30000
 
-MODULE_AUTHOR("IMSAR, LLC.");
-MODULE_DESCRIPTION("IMSAR DMA driver");
+MODULE_AUTHOR("IMSAR, LLC. Embedded Team <embedded@imsar.com>");
+MODULE_DESCRIPTION("IMSAR User Space DMA driver");
 MODULE_LICENSE("GPL v2");
+MODULE_VERSION(GIT_DESCRIBE);
 
 // ------------------------------------------------------------------
 // Data structure definitions
@@ -134,6 +137,7 @@ static void imdma_buffer_free(struct imdma_device *device_data);
 static int imdma_parse_dt(struct imdma_device *device_data);
 static int imdma_char_dev_create(struct imdma_device *device_data);
 static void imdma_char_dev_destroy(struct imdma_device *device_data);
+ssize_t imdma_name_show(struct device *dev, struct device_attribute *attr, char *buf);
 
 // ------------------------------------------------------------------
 // Static variables
@@ -168,6 +172,20 @@ static const struct of_device_id imdma_device_table[] = {
     {},
 };
 MODULE_DEVICE_TABLE(of, imdma_device_table);
+
+// Attributes
+static DEVICE_ATTR(name, S_IRUGO, imdma_name_show, NULL);
+static struct attribute *imdma_attrs[] = {
+    &dev_attr_name.attr,
+    NULL,
+};
+static struct attribute_group imdma_attr_group = {
+    .attrs = imdma_attrs,
+};
+static const struct attribute_group *imdma_attr_groups[] = {
+    &imdma_attr_group,
+    NULL,
+};
 
 // ------------------------------------------------------------------
 // Function definitions
@@ -441,8 +459,11 @@ static int imdma_probe(struct platform_device *pdev)
 	if (IS_ERR(device_data->dma_channel))
 	{
 		rc = PTR_ERR(device_data->dma_channel);
-		dev_err(device_data->device, "request for DMA channel \"%s\" failed; rc = %d\n", device_data->dma_channel_name,
-		        rc);
+		if (rc != -EPROBE_DEFER)
+		{
+			dev_err(device_data->device, "request for DMA channel \"%s\" failed; rc = %d\n",
+			        device_data->dma_channel_name, rc);
+		}
 		device_data->dma_channel = 0;
 		return rc;
 	}
@@ -495,6 +516,8 @@ static int __init imdma_init(void)
 	{
 		return PTR_ERR(s_device_class);
 	}
+
+	s_device_class->dev_groups = imdma_attr_groups;
 
 	// Register as platform driver
 	return platform_driver_register(&imdma_driver);
@@ -771,7 +794,6 @@ static int imdma_parse_dt(struct imdma_device *device_data)
 static int imdma_char_dev_create(struct imdma_device *device_data)
 {
 	int rc;
-	char device_name_full[32] = "imdma_";
 
 	// Allocate a character device region
 	rc = alloc_chrdev_region(&device_data->char_dev_node, 0, 1, IMDMA_DRIVER_NAME);
@@ -794,12 +816,13 @@ static int imdma_char_dev_create(struct imdma_device *device_data)
 	}
 
 	// Create the device node in /dev
-	strcat(device_name_full, device_data->device_name);
-	device_data->char_dev_device =
-	    device_create(s_device_class, NULL, device_data->char_dev_node, NULL, device_name_full);
+	device_data->char_dev_device = device_create(s_device_class, device_data->device, device_data->char_dev_node, NULL,
+	                                             "imdma_%s", device_data->device_name);
+	dev_set_drvdata(device_data->char_dev_device, device_data);
 
 	if (IS_ERR(device_data->char_dev_device))
 	{
+		rc = -ENOMEM;
 		dev_err(device_data->device, "unable to create the device\n");
 		goto device_create_fail;
 	}
@@ -829,4 +852,17 @@ static void imdma_char_dev_destroy(struct imdma_device *device_data)
 	cdev_del(&device_data->char_dev);
 
 	unregister_chrdev_region(device_data->char_dev_node, 1);
+}
+
+ssize_t imdma_name_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct imdma_device *device_data = dev_get_drvdata(dev);
+	if (device_data->device_name)
+	{
+		return snprintf(buf, PAGE_SIZE, "%s\n", device_data->device_name);
+	}
+	else
+	{
+		return 0;
+	}
 }
