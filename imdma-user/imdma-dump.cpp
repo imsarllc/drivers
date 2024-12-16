@@ -92,9 +92,10 @@ static void ctrlc(int sig)
 	signal(SIGINT, SIG_DFL);
 }
 
-static bool finishTransfer(const char *filePrefix, unsigned int transferNumber, Transfer &transfer)
+static bool finishTransfer(const char *filePrefix, unsigned int transferNumber, Transfer &transfer,
+                           unsigned int timeoutMs)
 {
-	int finishStatus = transfer.finishTransfer(3000);
+	int finishStatus = transfer.finishTransfer(timeoutMs);
 	if (finishStatus != 0)
 	{
 		std::cerr << "transfer " << transferNumber << " failed with status " << finishStatus << std::endl;
@@ -129,7 +130,8 @@ int main(int argc, const char *const argv[])
 {
 	if (argc < 3)
 	{
-		std::cout << "Usage: " << argv[0] << " <device> <filename> [transfer_count=0] [length_bytes=5242880]\n";
+		std::cout << "Usage: " << argv[0]
+		          << " <device> <filename> [transfer_count=0] [length_bytes=5242880] [timeout_ms=3000]\n";
 		std::cout << "Example: " << argv[0] << " /dev/imdma_downsampled /tmp/data_\n";
 		return 1;
 	}
@@ -138,6 +140,7 @@ int main(int argc, const char *const argv[])
 	const char *filename = argv[2];
 	unsigned int numberOfTransfers = 0; // 0 = unlimited
 	unsigned int lengthBytes = 5242880; // 5MB
+	unsigned int timeoutMs = 3000;      // 3 seconds
 
 	if (argc >= 4)
 	{
@@ -147,6 +150,11 @@ int main(int argc, const char *const argv[])
 	if (argc >= 5)
 	{
 		lengthBytes = strtoul(argv[4], NULL, 10);
+	}
+
+	if (argc >= 6)
+	{
+		timeoutMs = strtoul(argv[5], NULL, 10);
 	}
 
 	signal(SIGINT, ctrlc);
@@ -175,7 +183,7 @@ int main(int argc, const char *const argv[])
 		else
 		{
 			std::unique_ptr<Transfer> &transfer = pendingTransfers.front();
-			bool status = finishTransfer(filename, transferFinishCount++, *transfer);
+			bool status = finishTransfer(filename, transferFinishCount++, *transfer, timeoutMs);
 			pendingTransfers.pop();
 			if (status == false)
 			{
@@ -188,7 +196,7 @@ int main(int argc, const char *const argv[])
 	while (pendingTransfers.size() > 0)
 	{
 		std::unique_ptr<Transfer> &transfer = pendingTransfers.front();
-		finishTransfer(filename, transferFinishCount++, *transfer);
+		finishTransfer(filename, transferFinishCount++, *transfer, timeoutMs);
 		pendingTransfers.pop();
 	}
 
