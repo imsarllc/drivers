@@ -131,7 +131,7 @@ int main(int argc, const char *const argv[])
 	if (argc < 3)
 	{
 		std::cout << "Usage: " << argv[0]
-		          << " <device> <filename> [transfer_count=0] [length_bytes=5242880] [timeout_ms=3000]\n";
+		          << " <device> <filename_prefix> [transfer_count=0] [length_bytes=5242880] [timeout_ms=3000]\n";
 		std::cout << "Example: " << argv[0] << " /dev/imdma_downsampled /tmp/data_\n";
 		return 1;
 	}
