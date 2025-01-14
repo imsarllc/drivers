@@ -74,7 +74,7 @@ struct TransferEntry
 	std::chrono::steady_clock::time_point startTime;
 };
 
-static bool start_transfer(imdma_transfer_t *dmaTransfer, unsigned int lengthBytes)
+static bool start_transfer(imdma_transfer_t *dmaTransfer, unsigned int lengthBytes, unsigned int timeoutMs)
 {
 	// std::cout << dmaTransfer << " start" << std::endl;
 
@@ -93,7 +93,7 @@ static bool start_transfer(imdma_transfer_t *dmaTransfer, unsigned int lengthByt
 		return false;
 	}
 
-	int timeoutRc = imdma_transfer_set_timeout_ms(dmaTransfer, 3000);
+	int timeoutRc = imdma_transfer_set_timeout_ms(dmaTransfer, timeoutMs);
 	if (timeoutRc != 0)
 	{
 		std::cerr << "failed to set transfer timeout" << std::endl;
@@ -142,7 +142,7 @@ int main(int argc, const char *const argv[])
 
 	if (argc < 2)
 	{
-		std::cout << "Usage: " << argv[0] << " <device> [lengthBytes:1000] [seconds:0]\n";
+		std::cout << "Usage: " << argv[0] << " <device> [lengthBytes:1000] [seconds:0] [timeout_ms:3000]\n";
 		std::cout << "Example: " << argv[0] << " /dev/imdma_downsampled\n";
 		return 1;
 	}
@@ -167,6 +167,12 @@ int main(int argc, const char *const argv[])
 		seconds = strtoul(argv[3], NULL, 10);
 	}
 
+	unsigned int timeoutMs = 3000; // 3 seconds
+	if (argc >= 5)
+	{
+		timeoutMs = strtoul(argv[4], NULL, 10);
+	}
+
 	std::queue<imdma_transfer_t *> pendingTransfers;
 
 	StatisticsRecorder stats;
@@ -180,7 +186,7 @@ int main(int argc, const char *const argv[])
 		imdma_transfer_t *dmaTransfer = imdma_transfer_alloc(imdma);
 		if (dmaTransfer != nullptr)
 		{
-			bool started = start_transfer(dmaTransfer, lengthBytes);
+			bool started = start_transfer(dmaTransfer, lengthBytes, timeoutMs);
 			if (!started)
 			{
 				break;
