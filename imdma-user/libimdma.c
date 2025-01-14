@@ -1,5 +1,6 @@
 #include "libimdma.h"
 
+#include <errno.h>
 #include <fcntl.h>
 #include <malloc.h>
 #include <pthread.h>
@@ -30,18 +31,9 @@ typedef struct imdma_internal_st
 	struct imdma_internal_buffer_state_st *bufferStates;
 } imdma_internal_t;
 
-typedef enum imdma_internal_buffer_status_en
-{
-	IMDMA_BUFFER_STATUS_FREE = 0,
-	IMDMA_BUFFER_STATUS_ALLOCATED = 1,
-	IMDMA_BUFFER_STATUS_BUSY = 2,
-	IMDMA_BUFFER_STATUS_DONE = 3,
-} imdma_internal_buffer_status_t;
-
 typedef struct imdma_internal_buffer_state_st
 {
 	imdma_internal_t *imdma;
-	imdma_internal_buffer_status_t status; // FREE, ALLOCATED, BUSY, or DONE
 
 	unsigned int buffer_index; // for convenience
 	void *data_start;
@@ -74,18 +66,18 @@ imdma_t *imdma_create(const char *devicePath)
 	int getSpecResult = ioctl(state->devfd, IMDMA_BUFFER_GET_SPEC, &state->bufferSpec);
 	if (getSpecResult < 0)
 	{
+		perror(LIBIMDMA_NAME ": failed to get buffer specifications");
 		close(state->devfd);
 		free(state);
-		perror(LIBIMDMA_NAME ": failed to get buffer specifications");
 		return NULL;
 	}
 
 	state->bufferStates = calloc(state->bufferSpec.count, sizeof(imdma_buffer_state_t));
 	if (state->bufferStates == NULL)
 	{
+		perror(LIBIMDMA_NAME ": failed to allocate buffer state memory");
 		close(state->devfd);
 		free(state);
-		perror(LIBIMDMA_NAME ": failed to allocate buffer state memory");
 		return NULL;
 	}
 
@@ -101,9 +93,9 @@ imdma_t *imdma_create(const char *devicePath)
 	                     0);                     // offset
 	if (state->buffer == MAP_FAILED)
 	{
+		perror(LIBIMDMA_NAME ": failed to mmap");
 		close(state->devfd);
 		free(state);
-		perror(LIBIMDMA_NAME ": failed to mmap");
 		return NULL;
 	}
 
@@ -114,8 +106,8 @@ imdma_t *imdma_create(const char *devicePath)
 		buffer->buffer_index = i;
 		buffer->offset_bytes = i * state->bufferSpec.size_bytes;
 		buffer->data_start = &buffer->imdma->buffer[buffer->offset_bytes];
-		buffer->status = IMDMA_BUFFER_STATUS_FREE;
 		buffer->length_bytes = 0;
+		buffer->timeout_ms = 0;
 	}
 
 	return state;
@@ -145,32 +137,29 @@ imdma_transfer_t *imdma_transfer_alloc(imdma_t *imdma)
 {
 	imdma_internal_t *state = (imdma_internal_t *)imdma;
 
-	// TODO: handle race conditions
-
-	for (int i = 0; i < state->bufferSpec.count; i++)
+	struct imdma_buffer_reserve_spec spec;
+	int res = ioctl(state->devfd, IMDMA_BUFFER_RESERVE, &spec);
+	if (res == 0)
 	{
-		imdma_buffer_state_t *buffer = &state->bufferStates[i];
-		if (buffer->status == IMDMA_BUFFER_STATUS_FREE)
-		{
-			buffer->status = IMDMA_BUFFER_STATUS_ALLOCATED;
-			return (imdma_transfer_t *)buffer;
-		}
+		imdma_buffer_state_t *buffer = &state->bufferStates[spec.buffer_index];
+		return (imdma_transfer_t *)buffer;
 	}
-
-	return NULL; // no buffers available
+	else
+	{
+		if (res != 0 && errno != ENOBUFS)
+		{
+			perror(LIBIMDMA_NAME ": failed to reserve buffer");
+		}
+		return NULL;
+	}
 }
 
 int imdma_transfer_start_async(imdma_transfer_t *transfer)
 {
 	imdma_buffer_state_t *buffer = (imdma_buffer_state_t *)transfer;
 
-	if (buffer->status != IMDMA_BUFFER_STATUS_ALLOCATED)
-	{
-		return -1;
-	}
-
 	// Configure the transfer
-	struct imdma_transfer_spec transferSpec = {
+	struct imdma_transfer_start_spec transferSpec = {
 	    .buffer_index = buffer->buffer_index, //
 	    .length_bytes = buffer->length_bytes  //
 	};
@@ -181,10 +170,8 @@ int imdma_transfer_start_async(imdma_transfer_t *transfer)
 	if (startResult < 0)
 	{
 		perror(LIBIMDMA_NAME ": failed to start transfer");
-		return 1;
+		return errno;
 	}
-
-	buffer->status = IMDMA_BUFFER_STATUS_BUSY;
 
 	return 0;
 }
@@ -194,30 +181,19 @@ int imdma_transfer_finish(imdma_transfer_t *transfer)
 	imdma_buffer_state_t *buffer = (imdma_buffer_state_t *)transfer;
 
 	// Configure the transfer
-	struct imdma_transfer_spec transferSpec = {
+	struct imdma_transfer_finish_spec finishSpec = {
 	    .buffer_index = buffer->buffer_index, //
 	    .timeout_ms = buffer->timeout_ms      //
 	};
 
 	// Wait for transfer to finish
-	// Note: This ioctl requires transferSpec.buffer_index
-	//       It sets transferSpec.{status, offset_bytes, length_bytes}
-	int finishResult = ioctl(buffer->imdma->devfd, IMDMA_TRANSFER_FINISH, &transferSpec);
+	// Note: This ioctl requires finishSpec.buffer_index, finishSpec.timeout_ms
+	int finishResult = ioctl(buffer->imdma->devfd, IMDMA_TRANSFER_FINISH, &finishSpec);
 	if (finishResult < 0)
 	{
 		perror(LIBIMDMA_NAME ": failed to finish transfer");
-		return -1;
+		return errno;
 	}
-
-	if (transferSpec.status != IMDMA_STATUS_COMPLETE)
-	{
-		fprintf(stderr, LIBIMDMA_NAME ": transfer failed: status = %u\n", transferSpec.status);
-		buffer->length_bytes = 0;
-		return -transferSpec.status;
-	}
-
-	buffer->length_bytes = transferSpec.length_bytes;
-	buffer->status = IMDMA_BUFFER_STATUS_DONE;
 
 	return 0;
 }
@@ -225,62 +201,49 @@ int imdma_transfer_finish(imdma_transfer_t *transfer)
 void imdma_transfer_free(imdma_transfer_t *transfer)
 {
 	imdma_buffer_state_t *buffer = (imdma_buffer_state_t *)transfer;
-	buffer->status = IMDMA_BUFFER_STATUS_FREE;
-	buffer->length_bytes = 0;
+
+	struct imdma_buffer_release_spec releaseSpec = {.buffer_index = buffer->buffer_index};
+
+	// Release the buffer
+	// Note: This ioctl requires releaseSpec.buffer_index
+	int finishResult = ioctl(buffer->imdma->devfd, IMDMA_BUFFER_RELEASE, &releaseSpec);
+	if (finishResult < 0)
+	{
+		perror(LIBIMDMA_NAME ": failed to release buffer");
+		return;
+	}
+
+	return;
 }
 
 int imdma_transfer_set_length(imdma_transfer_t *transfer, unsigned int lengthBytes)
 {
 	imdma_buffer_state_t *buffer = (imdma_buffer_state_t *)transfer;
-	if (buffer->status != IMDMA_BUFFER_STATUS_ALLOCATED)
-	{
-		return -1;
-	}
-
 	buffer->length_bytes = lengthBytes;
-
 	return 0;
 }
 
 unsigned int imdma_transfer_get_length(imdma_transfer_t *transfer)
 {
 	imdma_buffer_state_t *buffer = (imdma_buffer_state_t *)transfer;
-	if (buffer->status != IMDMA_BUFFER_STATUS_DONE)
-	{
-		return 0;
-	}
 	return buffer->length_bytes;
 }
 
 int imdma_transfer_set_timeout_ms(imdma_transfer_t *transfer, unsigned int timeoutMs)
 {
 	imdma_buffer_state_t *buffer = (imdma_buffer_state_t *)transfer;
-	if (buffer->status != IMDMA_BUFFER_STATUS_ALLOCATED && buffer->status != IMDMA_BUFFER_STATUS_BUSY)
-	{
-		return -1;
-	}
-
 	buffer->timeout_ms = timeoutMs;
-
 	return 0;
 }
 
 const void *imdma_transfer_get_data_const(imdma_transfer_t *transfer)
 {
 	imdma_buffer_state_t *buffer = (imdma_buffer_state_t *)transfer;
-	if (buffer->status != IMDMA_BUFFER_STATUS_DONE)
-	{
-		return NULL;
-	}
 	return buffer->data_start;
 }
 
 void *imdma_transfer_get_data(imdma_transfer_t *transfer)
 {
 	imdma_buffer_state_t *buffer = (imdma_buffer_state_t *)transfer;
-	if (buffer->status != IMDMA_BUFFER_STATUS_ALLOCATED)
-	{
-		return NULL;
-	}
 	return buffer->data_start;
 }

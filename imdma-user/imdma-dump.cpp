@@ -175,7 +175,7 @@ int main(int argc, const char *const argv[])
 			if (result != 0)
 			{
 				std::cerr << "failed to start transfer" << std::endl;
-				break;
+				continue;
 			}
 			pendingTransfers.push(std::move(transfer));
 			transferStartCount++;
@@ -183,12 +183,8 @@ int main(int argc, const char *const argv[])
 		else
 		{
 			std::unique_ptr<Transfer> &transfer = pendingTransfers.front();
-			bool status = finishTransfer(filename, transferFinishCount++, *transfer, timeoutMs);
+			finishTransfer(filename, transferFinishCount++, *transfer, timeoutMs);
 			pendingTransfers.pop();
-			if (status == false)
-			{
-				break;
-			}
 		}
 	}
 

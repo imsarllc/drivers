@@ -51,10 +51,15 @@ MODULE_VERSION(GIT_DESCRIBE);
 // Data structure definitions
 // ------------------------------------------------------------------
 
+struct imdma_device;
+
 enum imdma_buffer_state
 {
-	IMDMA_BUFFER_FREE,
-	IMDMA_BUFFER_BUSY
+	IMDMA_BUFFER_UNDEF,       // Unknown state
+	IMDMA_BUFFER_FREE,        // Available
+	IMDMA_BUFFER_RESERVED,    // Reserved, but no transfer started yet
+	IMDMA_BUFFER_IN_PROGRESS, // Transfer started, but not completed or abandoned (timed out) yet
+	IMDMA_BUFFER_DONE,        // Transfer finished (or errored), waiting for user space to release
 };
 
 struct imdma_buffer_status
@@ -62,15 +67,16 @@ struct imdma_buffer_status
 	unsigned int buffer_index;
 	unsigned int buffer_offset;
 
-	// read/write must be protected by mutex
-	enum imdma_buffer_state status;
-	struct mutex mutex;
+	enum imdma_buffer_state buffer_state;
+	spinlock_t buffer_state_spinlock;
 
 	unsigned int length_bytes;
 	struct completion cmp;
 	dma_cookie_t cookie;
 	dma_addr_t dma_handle;
 	struct scatterlist sg_list;
+
+	struct imdma_device *device_data; // used by completion callback to access device
 };
 
 struct imdma_device
@@ -114,9 +120,11 @@ static int imdma_mmap(struct file *file_p, struct vm_area_struct *vma);
 static long imdma_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
 
 // ioctl implementations
+static long imdma_ioctl_buffer_get_spec(struct imdma_device *device_data, unsigned long arg);
+static long imdma_ioctl_buffer_reserve(struct imdma_device *device_data, unsigned long arg);
+static long imdma_ioctl_buffer_release(struct imdma_device *device_data, unsigned long arg);
 static long imdma_ioctl_transfer_start(struct imdma_device *device_data, unsigned long arg);
 static long imdma_ioctl_transfer_finish(struct imdma_device *device_data, unsigned long arg);
-static long imdma_ioctl_buffer_get_spec(struct imdma_device *device_data, unsigned long arg);
 
 // Platform device operations
 static int imdma_probe(struct platform_device *pdev);
@@ -127,9 +135,11 @@ static int __init imdma_init(void);
 static void __exit imdma_exit(void);
 
 // Internal helper functions
-static int imdma_start_transfer(struct imdma_device *device_data, struct imdma_transfer_spec *transfer_spec);
-static void imdma_wait_for_transfer(struct imdma_device *device_data, struct imdma_transfer_spec *transfer_spec);
-static void imdma_transfer_complete_callback(void *completion);
+static int imdma_buffer_change_state_if(struct imdma_buffer_status *status, enum imdma_buffer_state prev_state,
+                                        enum imdma_buffer_state new_state);
+static int imdma_transfer_start(struct imdma_device *device_data, struct imdma_transfer_start_spec *spec);
+static int imdma_transfer_finish(struct imdma_device *device_data, struct imdma_transfer_finish_spec *spec);
+static void imdma_transfer_complete_callback(void *buffer_status);
 static void imdma_buffer_status_init(struct imdma_device *device_data, struct imdma_buffer_status *status,
                                      unsigned int buffer_index);
 static int imdma_buffer_alloc(struct imdma_device *device_data);
@@ -152,25 +162,24 @@ static struct file_operations imdma_file_ops = {
     .mmap = imdma_mmap             //
 };
 
-static const struct of_device_id imdma_of_ids[] = {{.compatible = "imsar,dma-channel"}, {}};
-
-static struct platform_driver imdma_driver = {
-    .driver =
-        {
-            .name = "imdma",
-            .owner = THIS_MODULE,
-            .of_match_table = imdma_of_ids,
-        },
-    .probe = imdma_probe,
-    .remove = imdma_remove,
-};
-
 static const struct of_device_id imdma_device_table[] = {
     {
         .compatible = "imsar,dma-channel",
     },
     {},
 };
+
+static struct platform_driver imdma_driver = {
+    .driver =
+        {
+            .name = "imdma",
+            .owner = THIS_MODULE,
+            .of_match_table = imdma_device_table,
+        },
+    .probe = imdma_probe,
+    .remove = imdma_remove,
+};
+
 MODULE_DEVICE_TABLE(of, imdma_device_table);
 
 // Attributes
@@ -223,6 +232,10 @@ static int imdma_open(struct inode *ino, struct file *file)
 			dev_err(device_data->device, "imdma_buffer_alloc error; rc=%d\n", rc);
 		}
 	}
+	else
+	{
+		dev_warn(device_data->device, "Device is already opened by %d processes!", device_data->usage_count);
+	}
 
 	// Increment the usage count
 	device_data->usage_count++;
@@ -247,8 +260,7 @@ static int imdma_release(struct inode *ino, struct file *file)
 	// If there are no more users, free the buffers
 	if (device_data->usage_count == 0)
 	{
-		// TODO: ensure that all transactions have completed
-		// dma_device->device_terminate_all(pchannel_p->channel_p);
+		dmaengine_terminate_sync(device_data->dma_channel); // make sure all transfers are finished
 		imdma_buffer_free(device_data);
 	}
 
@@ -281,12 +293,16 @@ static long imdma_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 	switch (cmd)
 	{
+	case IMDMA_BUFFER_GET_SPEC:
+		return imdma_ioctl_buffer_get_spec(device_data, arg);
+	case IMDMA_BUFFER_RESERVE:
+		return imdma_ioctl_buffer_reserve(device_data, arg);
+	case IMDMA_BUFFER_RELEASE:
+		return imdma_ioctl_buffer_release(device_data, arg);
 	case IMDMA_TRANSFER_START:
 		return imdma_ioctl_transfer_start(device_data, arg);
 	case IMDMA_TRANSFER_FINISH:
 		return imdma_ioctl_transfer_finish(device_data, arg);
-	case IMDMA_BUFFER_GET_SPEC:
-		return imdma_ioctl_buffer_get_spec(device_data, arg);
 	default:
 		dev_warn(device_data->device, "unrecognized ioctl cmd: %u", cmd);
 		return -EINVAL;
@@ -294,115 +310,6 @@ static long imdma_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 }
 
 // ioctl implementations
-
-static long imdma_ioctl_transfer_start(struct imdma_device *device_data, unsigned long arg)
-{
-	int rc;
-	struct imdma_transfer_spec transfer_spec;
-
-	// dev_dbg(device_data->device, "imdma_ioctl_transfer_start(..., %px)", (void *)arg);
-
-	if (copy_from_user(&transfer_spec, (struct imdma_transfer_spec *)arg, sizeof(transfer_spec)))
-	{
-		dev_warn(device_data->device, "copy_from_user failed");
-		return -EINVAL;
-	}
-
-	if (transfer_spec.buffer_index >= device_data->buffer_count)
-	{
-		dev_warn(device_data->device, "buffer index out of bounds");
-		return -EINVAL;
-	}
-
-	if (transfer_spec.length_bytes >= device_data->buffer_size_bytes)
-	{
-		dev_warn(device_data->device, "length_bytes is greater than buffer size");
-		return -EINVAL;
-	}
-
-	rc = mutex_lock_interruptible(&device_data->buffer_statuses[transfer_spec.buffer_index].mutex);
-	if (rc)
-	{
-		dev_dbg(device_data->device, "buffer %d status check interrupted", transfer_spec.buffer_index);
-		return -EINTR;
-	}
-
-	if (device_data->buffer_statuses[transfer_spec.buffer_index].status != IMDMA_BUFFER_FREE)
-	{
-		mutex_unlock(&device_data->buffer_statuses[transfer_spec.buffer_index].mutex);
-		dev_warn(device_data->device, "buffer %d is busy", transfer_spec.buffer_index);
-		return -EBUSY;
-	}
-
-	device_data->buffer_statuses[transfer_spec.buffer_index].status = IMDMA_BUFFER_BUSY;
-
-	rc = imdma_start_transfer(device_data, &transfer_spec);
-	if (rc)
-	{
-		device_data->buffer_statuses[transfer_spec.buffer_index].status = IMDMA_BUFFER_FREE;
-		mutex_unlock(&device_data->buffer_statuses[transfer_spec.buffer_index].mutex);
-		dev_warn(device_data->device, "buffer %d failed to start transfer", transfer_spec.buffer_index);
-		return rc;
-	}
-
-	mutex_unlock(&device_data->buffer_statuses[transfer_spec.buffer_index].mutex);
-
-	return 0;
-}
-
-static long imdma_ioctl_transfer_finish(struct imdma_device *device_data, unsigned long arg)
-{
-	int rc;
-	struct imdma_transfer_spec transfer_spec;
-
-	// dev_dbg(device_data->device, "imdma_ioctl_transfer_finish(..., %px)", (void *)arg);
-
-	if (copy_from_user(&transfer_spec, (struct imdma_transfer_spec *)arg, sizeof(transfer_spec)))
-	{
-		dev_warn(device_data->device, "copy_from_user failed");
-		return -EINVAL;
-	}
-
-	if (transfer_spec.buffer_index >= device_data->buffer_count)
-	{
-		dev_warn(device_data->device, "buffer index out of bounds");
-		return -EINVAL;
-	}
-
-	if (transfer_spec.timeout_ms >= IMDMA_TIMEOUT_MS_MAX) // 30 seconds max
-	{
-		dev_warn(device_data->device, "timeout_ms is too large");
-		return -EINVAL;
-	}
-
-	rc = mutex_lock_interruptible(&device_data->buffer_statuses[transfer_spec.buffer_index].mutex);
-	if (rc)
-	{
-		dev_dbg(device_data->device, "buffer %d status check interrupted", transfer_spec.buffer_index);
-		return -EINTR;
-	}
-
-	if (device_data->buffer_statuses[transfer_spec.buffer_index].status != IMDMA_BUFFER_BUSY)
-	{
-		mutex_unlock(&device_data->buffer_statuses[transfer_spec.buffer_index].mutex);
-		dev_warn(device_data->device, "buffer %d not in progress", transfer_spec.buffer_index);
-		return -EINVAL;
-	}
-
-	imdma_wait_for_transfer(device_data, &transfer_spec);
-
-	device_data->buffer_statuses[transfer_spec.buffer_index].status = IMDMA_BUFFER_FREE;
-
-	mutex_unlock(&device_data->buffer_statuses[transfer_spec.buffer_index].mutex);
-
-	if (copy_to_user((struct imdma_transfer_spec *)arg, &transfer_spec, sizeof(transfer_spec)))
-	{
-		dev_warn(device_data->device, "copy_to_user failed");
-		return -EINVAL;
-	}
-
-	return 0;
-}
 
 static long imdma_ioctl_buffer_get_spec(struct imdma_device *device_data, unsigned long arg)
 {
@@ -421,6 +328,232 @@ static long imdma_ioctl_buffer_get_spec(struct imdma_device *device_data, unsign
 
 	return 0;
 }
+
+static int imdma_buffer_change_state_if(struct imdma_buffer_status *status, enum imdma_buffer_state prev_state,
+                                        enum imdma_buffer_state new_state)
+{
+	int rc;
+	spin_lock(&status->buffer_state_spinlock);
+	if (status->buffer_state == prev_state || prev_state == IMDMA_BUFFER_UNDEF)
+	{
+		status->buffer_state = new_state;
+		rc = 1;
+	}
+	else
+	{
+		rc = 0;
+	}
+	spin_unlock(&status->buffer_state_spinlock);
+	return rc;
+}
+
+static long imdma_ioctl_buffer_reserve(struct imdma_device *device_data, unsigned long arg)
+{
+	unsigned int buffer_idx;
+	struct imdma_buffer_status *status;
+	struct imdma_buffer_reserve_spec spec;
+	int rc = -ENOBUFS;
+
+	for (buffer_idx = 0; buffer_idx < device_data->buffer_count; buffer_idx++)
+	{
+		status = &device_data->buffer_statuses[buffer_idx];
+
+		if (imdma_buffer_change_state_if(status, IMDMA_BUFFER_FREE, IMDMA_BUFFER_RESERVED))
+		{
+			spec.buffer_index = status->buffer_index;
+			spec.offset_bytes = status->buffer_offset;
+			rc = 0;
+			break;
+		}
+	}
+
+	if (rc != 0)
+	{
+		return rc;
+	}
+
+	if (copy_to_user((struct imdma_buffer_reserve_spec *)arg, &spec, sizeof(spec)))
+	{
+		status = &device_data->buffer_statuses[spec.buffer_index];
+		imdma_buffer_change_state_if(status, IMDMA_BUFFER_RESERVED, IMDMA_BUFFER_FREE);
+		dev_warn(device_data->device, "copy_to_user failed");
+		return -EINVAL;
+	}
+
+	return rc;
+}
+
+static long imdma_ioctl_buffer_release(struct imdma_device *device_data, unsigned long arg)
+{
+	struct imdma_buffer_status *status;
+	struct imdma_buffer_release_spec spec;
+	struct imdma_transfer_finish_spec wait_spec;
+	int rc = 0;
+
+	if (copy_from_user(&spec, (struct imdma_buffer_release_spec *)arg, sizeof(spec)))
+	{
+		dev_warn(device_data->device, "copy_from_user failed");
+		return -EINVAL;
+	}
+
+	if (spec.buffer_index >= device_data->buffer_count)
+	{
+		dev_warn(device_data->device, "buffer index out of bounds: %u (max %u)", spec.buffer_index,
+		         device_data->buffer_count - 1);
+		return -ENOENT;
+	}
+
+	status = &device_data->buffer_statuses[spec.buffer_index];
+
+	spin_lock(&status->buffer_state_spinlock);
+	if (status->buffer_state == IMDMA_BUFFER_RESERVED || status->buffer_state == IMDMA_BUFFER_DONE)
+	{
+		status->buffer_state = IMDMA_BUFFER_FREE;
+		rc = 0;
+	}
+	else if (status->buffer_state == IMDMA_BUFFER_FREE)
+	{
+		rc = -EPERM;
+	}
+	else if (status->buffer_state == IMDMA_BUFFER_IN_PROGRESS)
+	{
+		spin_unlock(&status->buffer_state_spinlock);
+		wait_spec.buffer_index = spec.buffer_index;
+		wait_spec.timeout_ms = 0; // will use default_timeout_ms
+		rc = imdma_transfer_finish(device_data, &wait_spec);
+		if (rc)
+		{
+			dev_emerg(device_data->device, "Transfer on buffer %d never finished. Giving up!\n", spec.buffer_index);
+		}
+		spin_lock(&status->buffer_state_spinlock);
+		status->buffer_state = IMDMA_BUFFER_FREE;
+		rc = 0;
+	}
+	else
+	{
+		dev_err(device_data->device, "buffer_release: Unhandled buffer state: %u (buffer_index = %u)\n",
+		        status->buffer_state, spec.buffer_index);
+		rc = -EIO;
+	}
+	spin_unlock(&status->buffer_state_spinlock);
+
+	return rc;
+}
+
+static long imdma_ioctl_transfer_start(struct imdma_device *device_data, unsigned long arg)
+{
+	int rc;
+	struct imdma_transfer_start_spec spec;
+	struct imdma_buffer_status *status;
+
+	// dev_dbg(device_data->device, "imdma_ioctl_transfer_start(..., %px)", (void *)arg);
+
+	if (copy_from_user(&spec, (struct imdma_spec *)arg, sizeof(spec)))
+	{
+		dev_warn(device_data->device, "copy_from_user failed");
+		return -EINVAL;
+	}
+
+	if (spec.buffer_index >= device_data->buffer_count)
+	{
+		dev_warn(device_data->device, "buffer index out of bounds: %u (max %u)", spec.buffer_index,
+		         device_data->buffer_count - 1);
+		return -ENOENT;
+	}
+
+	if (spec.length_bytes > device_data->buffer_size_bytes)
+	{
+		dev_warn(device_data->device, "length_bytes (%u) is greater than buffer size  (%u) ", spec.length_bytes,
+		         device_data->buffer_size_bytes);
+		return -EOVERFLOW;
+	}
+
+	status = &device_data->buffer_statuses[spec.buffer_index];
+
+	spin_lock(&status->buffer_state_spinlock);
+	if (status->buffer_state == IMDMA_BUFFER_RESERVED)
+	{
+		status->buffer_state = IMDMA_BUFFER_IN_PROGRESS;
+		rc = imdma_transfer_start(device_data, &spec);
+		if (rc)
+		{
+			dev_warn(device_data->device, "buffer %d failed to start transfer (rc=%d)", spec.buffer_index, rc);
+			rc = -EIO;
+		}
+	}
+	else if (status->buffer_state == IMDMA_BUFFER_FREE)
+	{
+		dev_warn(device_data->device, "buffer %d is not reserved", spec.buffer_index);
+		rc = -EPERM;
+	}
+	else if (status->buffer_state == IMDMA_BUFFER_IN_PROGRESS)
+	{
+		dev_warn(device_data->device, "buffer %d is already in progress", spec.buffer_index);
+		rc = -EALREADY;
+	}
+	else
+	{
+		dev_err(device_data->device, "transfer_start: unhandled buffer state: %u (buffer_index = %u)\n",
+		        status->buffer_state, spec.buffer_index);
+		rc = -EIO;
+	}
+	spin_unlock(&status->buffer_state_spinlock);
+
+	return rc;
+}
+
+static long imdma_ioctl_transfer_finish(struct imdma_device *device_data, unsigned long arg)
+{
+	int rc;
+	struct imdma_transfer_finish_spec spec;
+	struct imdma_buffer_status *status;
+
+	// dev_dbg(device_data->device, "imdma_ioctl_transfer_finish(..., %px)", (void *)arg);
+
+	if (copy_from_user(&spec, (struct imdma_transfer_finish_spec *)arg, sizeof(spec)))
+	{
+		dev_warn(device_data->device, "copy_from_user failed");
+		return -EINVAL;
+	}
+
+	if (spec.buffer_index >= device_data->buffer_count)
+	{
+		dev_warn(device_data->device, "buffer index out of bounds: %u (max %u)", spec.buffer_index,
+		         device_data->buffer_count - 1);
+		return -ENOENT;
+	}
+
+	if (spec.timeout_ms >= IMDMA_TIMEOUT_MS_MAX) // 30 seconds max
+	{
+		dev_warn(device_data->device, "timeout_ms is too large: %u (max %u)", spec.timeout_ms, IMDMA_TIMEOUT_MS_MAX);
+		return -EINVAL;
+	}
+
+	status = &device_data->buffer_statuses[spec.buffer_index];
+
+	spin_lock(&status->buffer_state_spinlock);
+	if (status->buffer_state == IMDMA_BUFFER_IN_PROGRESS || status->buffer_state == IMDMA_BUFFER_DONE)
+	{
+		spin_unlock(&status->buffer_state_spinlock);
+		rc = imdma_transfer_finish(device_data, &spec);
+		spin_lock(&status->buffer_state_spinlock);
+	}
+	else
+	{
+		dev_err(device_data->device, "transfer_finish: unhandled buffer state: %u (buffer_index = %u)\n",
+		        status->buffer_state, spec.buffer_index);
+		rc = -EPERM;
+	}
+	spin_unlock(&status->buffer_state_spinlock);
+
+	if (rc)
+	{
+		return rc;
+	}
+
+	return 0;
+}
+
 
 // Platform device operations
 
@@ -537,14 +670,14 @@ static void __exit imdma_exit(void)
 
 // Internal helper functions
 
-static int imdma_start_transfer(struct imdma_device *device_data, struct imdma_transfer_spec *transfer_spec)
+static int imdma_transfer_start(struct imdma_device *device_data, struct imdma_transfer_start_spec *spec)
 {
 	struct dma_async_tx_descriptor *chan_desc;
 	struct dma_device *dma_device = device_data->dma_channel->device;
-	int buffer_index = transfer_spec->buffer_index;
+	int buffer_index = spec->buffer_index;
 	struct scatterlist *sg_list;
 
-	device_data->buffer_statuses[buffer_index].length_bytes = transfer_spec->length_bytes;
+	device_data->buffer_statuses[buffer_index].length_bytes = spec->length_bytes;
 
 	// Initialize and populate the scatter-gather list (with one entry)
 	// TODO: use sg_init_one instead?
@@ -568,7 +701,7 @@ static int imdma_start_transfer(struct imdma_device *device_data, struct imdma_t
 
 	// Attach completion callback
 	chan_desc->callback = imdma_transfer_complete_callback;
-	chan_desc->callback_param = &device_data->buffer_statuses[buffer_index].cmp;
+	chan_desc->callback_param = &device_data->buffer_statuses[buffer_index];
 
 	// Initialize the completion
 	init_completion(&device_data->buffer_statuses[buffer_index].cmp);
@@ -590,65 +723,87 @@ static int imdma_start_transfer(struct imdma_device *device_data, struct imdma_t
 	return 0;
 }
 
-static void imdma_wait_for_transfer(struct imdma_device *device_data, struct imdma_transfer_spec *transfer_spec)
+static int imdma_transfer_finish(struct imdma_device *device_data, struct imdma_transfer_finish_spec *spec)
 {
 	unsigned long timeout_jiffies;
-	unsigned int timeout_ms;
+	unsigned long remaining_jiffies;
 	enum dma_status status;
-	int buffer_index = transfer_spec->buffer_index;
+	struct imdma_buffer_status *buffer_status;
 
-	if (transfer_spec->timeout_ms != 0)
+	if (spec->timeout_ms == 0)
 	{
-		timeout_ms = transfer_spec->timeout_ms;
+		spec->timeout_ms = device_data->default_timeout_ms;
+	}
+
+	timeout_jiffies = msecs_to_jiffies(spec->timeout_ms);
+
+	buffer_status = &device_data->buffer_statuses[spec->buffer_index];
+
+	dev_dbg(device_data->char_dev_device, "wait_for_transfer: buffer_index = %d, dma_handle = 0x%px, timeout_ms = %u",
+	        spec->buffer_index, (void *)buffer_status->dma_handle, spec->timeout_ms);
+
+	// Wait for the transaction to complete, or timeout, or get an error
+	remaining_jiffies = wait_for_completion_killable_timeout(&buffer_status->cmp, timeout_jiffies);
+	status = dma_async_is_tx_complete(device_data->dma_channel, buffer_status->cookie, NULL, NULL);
+
+	if (status == DMA_COMPLETE)
+	{
+		return 0;
+	}
+	else if (status == DMA_IN_PROGRESS)
+	{
+		dev_err(device_data->char_dev_device, "DMA in progress, but timed out\n");
+		return -ETIMEDOUT;
 	}
 	else
 	{
-		timeout_ms = device_data->default_timeout_ms;
+		dev_err(device_data->char_dev_device, "DMA transfer error: %d\n", status);
+		return -EIO;
 	}
 
-	timeout_jiffies = msecs_to_jiffies(timeout_ms);
-
-	dev_dbg(device_data->char_dev_device, "wait_for_transfer: buffer_index = %d, dma_handle = 0x%px, length = %u",
-	        buffer_index, (void *)device_data->buffer_statuses[buffer_index].dma_handle,
-	        device_data->buffer_statuses[buffer_index].length_bytes);
-
-	// Wait for the transaction to complete, or timeout, or get an error
-	timeout_jiffies = wait_for_completion_timeout(&device_data->buffer_statuses[buffer_index].cmp, timeout_jiffies);
-	status = dma_async_is_tx_complete(device_data->dma_channel, device_data->buffer_statuses[buffer_index].cookie, NULL,
-	                                  NULL);
-
-	if (timeout_jiffies == 0)
-	{
-		transfer_spec->status = IMDMA_STATUS_TIMEOUT;
-		dev_err(device_data->char_dev_device, "DMA timed out\n");
-		return;
-	}
-
-	if (status != DMA_COMPLETE)
-	{
-		transfer_spec->status = IMDMA_STATUS_ERROR;
-		dev_err(device_data->char_dev_device, "DMA returned completion callback status of: %s\n",
-		        status == DMA_ERROR ? "error" : "in progress");
-		return;
-	}
-
-	transfer_spec->length_bytes = device_data->buffer_statuses[buffer_index].length_bytes;
-	transfer_spec->offset_bytes = buffer_index * device_data->buffer_size_bytes;
-	transfer_spec->status = IMDMA_STATUS_COMPLETE;
+	return 0;
 }
 
-static void imdma_transfer_complete_callback(void *completion)
+static void imdma_transfer_complete_callback(void *buffer_status)
 {
-	complete(completion); // signal transaction completion
+	struct imdma_buffer_status *status;
+	struct imdma_device *device_data;
+	enum dma_status dma_status;
+
+	status = (struct imdma_buffer_status *)buffer_status;
+	device_data = status->device_data;
+
+	dev_dbg(status->device_data->char_dev_device, "Transfer complete for buffer %d\n", status->buffer_index);
+
+	spin_lock(&status->buffer_state_spinlock);
+	if (status->buffer_state != IMDMA_BUFFER_IN_PROGRESS)
+	{
+		dev_emerg(status->device_data->char_dev_device,
+		          "Got completion callback for buffer (%d) that isn't in progress (%d)\n", status->buffer_index,
+		          status->buffer_state);
+	}
+	spin_unlock(&status->buffer_state_spinlock);
+
+	dma_status = dma_async_is_tx_complete(device_data->dma_channel, status->cookie, NULL, NULL);
+	if (dma_status != DMA_COMPLETE)
+	{
+		dev_err(device_data->char_dev_device, "DMA transfer error: %d\n", dma_status);
+	}
+
+	status->buffer_state = IMDMA_BUFFER_DONE;
+
+	complete(&status->cmp); // signal transaction completion
 }
 
 static void imdma_buffer_status_init(struct imdma_device *device_data, struct imdma_buffer_status *status,
                                      unsigned int buffer_index)
 {
-	mutex_init(&status->mutex);
+	spin_lock_init(&status->buffer_state_spinlock);
+	status->buffer_state = IMDMA_BUFFER_FREE;
 	status->buffer_index = buffer_index;
 	status->buffer_offset = buffer_index * device_data->buffer_size_bytes;
 	status->dma_handle = device_data->buffer_bus_address + status->buffer_offset;
+	status->device_data = device_data;
 }
 
 static int imdma_buffer_alloc(struct imdma_device *device_data)
@@ -701,11 +856,12 @@ static void imdma_buffer_free(struct imdma_device *device_data)
 {
 	if (device_data->buffer_virtual_address)
 	{
-
 		dev_dbg(device_data->device, "free DMA memory; VAddr: %px, BAddr: %px\n", device_data->buffer_virtual_address,
 		        (void *)device_data->buffer_bus_address);
+
 		dmam_free_coherent(device_data->device, device_data->buffer_size_bytes * device_data->buffer_count,
 		                   device_data->buffer_virtual_address, device_data->buffer_bus_address);
+
 		device_data->buffer_virtual_address = 0;
 		device_data->buffer_bus_address = 0;
 	}
