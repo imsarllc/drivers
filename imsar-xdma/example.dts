@@ -1,0 +1,84 @@
+/dts-v1/;
+/plugin/;
+
+&axilite {
+    #address-cells = <1>;
+    #size-cells = <1>;
+
+    xdma@b40000 {
+        reg = <0xb40000 0x10000>;
+        compatible = "imsar,xdma-simple";
+        imsar,name = "debug";
+
+        iommus = <&smmu 0x5A>; // 0x5A = TEGRA_SID_PCIE4
+
+        #clock-cells = <0>;
+        clock-names = "s_axi_lite_aclk";
+        clocks = <&axi_clk>;
+
+        #address-cells = <1>;
+        #size-cells = <1>;
+
+        dma-channel@30 {
+            reg = <0x30 0x30>;
+            compatible = "imsar,xdma-channel";
+            interrupts = <23>;
+            interrupt-parent = <&fpga>;
+            imsar,name = "debug";
+            imsar,direction = "s2mm";
+            imsar,buffer-count = <4>;
+            imsar,buffer-size-bytes = <26214400>; // 25 MB
+        };
+
+        // dma-channel@0 {
+        //     reg = <0x00 0x30>;
+        //     compatible = "imsar,xdma-channel";
+        //     interrupts = <22>;
+        //     interrupt-parent = <&fpga>;
+        //     imsar,name = "unused";
+        //     imsar,direction = "mm2s";
+        //     imsar,buffer-count = <4>;
+        //     imsar,buffer-size-bytes = <26214400>; // 25 MB
+        // };
+    };
+
+    xdma@b50000 {
+        reg = <0xb50000 0x10000>;
+        compatible = "imsar,xdma-simple";
+        imsar,name = "downsampled";
+
+        iommus = <&smmu 0x5A>; // 0x5A = TEGRA_SID_PCIE4
+        // #dma-cells = <1>;
+        // dma-coherent;
+
+        #clock-cells = <0>;
+        clock-names = "s_axi_lite_aclk";
+        clocks = <&axi_clk>;
+
+        #address-cells = <1>;
+        #size-cells = <1>;
+
+        dma-channel@30 {
+            reg = <0x30 0x30>;
+            compatible = "imsar,xdma-channel";
+            interrupts = <10>;
+            interrupt-parent = <&fpga>;
+            imsar,name = "downsampled";
+            imsar,direction = "s2mm";
+            imsar,buffer-count = <4>;
+            imsar,buffer-size-bytes = <26214400>; // 25 MB
+        };
+
+        // dma-channel@0 {
+        //     reg = <0x00 0x30>;
+        //     compatible = "imsar,xdma-channel";
+        //     interrupts = <9>;
+        //     interrupt-parent = <&fpga>;
+        //     imsar,name = "unused";
+        //     imsar,direction = "mm2s";
+        //     imsar,buffer-count = <4>;
+        //     imsar,buffer-size-bytes = <26214400>; // 25 MB
+        // };
+    };
+
+};
