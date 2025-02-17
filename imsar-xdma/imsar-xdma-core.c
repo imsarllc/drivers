@@ -132,6 +132,8 @@ static const struct of_device_id imsar_xdma_device_table[] = {
     {},
 };
 
+MODULE_DEVICE_TABLE(of, imsar_xdma_device_table);
+
 static struct platform_driver imsar_xdma_driver = {
     .driver =
         {
