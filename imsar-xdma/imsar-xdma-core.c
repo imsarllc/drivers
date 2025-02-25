@@ -41,6 +41,7 @@
 #include <linux/wait.h>
 
 #include "imsar-xdma-defs.h"
+#include "imsar-xdma-ioctl.h"
 #include "imsar-xdma-ops.h"
 #include "imsar-xdma-sysfs.h"
 
@@ -69,6 +70,7 @@ static ssize_t imsar_xdma_file_write(struct file *file, const char __user *buf, 
 static ssize_t imsar_xdma_file_read(struct file *file, char __user *buf, size_t bytes, loff_t *off);
 static unsigned int imsar_xdma_file_poll(struct file *file, poll_table *wait);
 static long imsar_xdma_file_ioctl(struct file *file, unsigned int request, unsigned long arg);
+static long imsar_xdma_ioctl_buffer_get_size(imsar_xdma_channel_t *channel_data, unsigned long arg);
 
 // File helpers
 static void imsar_xdma_file_init(imsar_xdma_file_t *file_data, imsar_xdma_channel_t *channel);
@@ -107,7 +109,7 @@ static int imsar_xdma_device_parse_dt(imsar_xdma_dev_t *device_data);
 
 // Channel operations
 static imsar_xdma_channel_t *imsar_xdma_channel_create(imsar_xdma_dev_t *device_data, struct device_node *channel_node,
-                                                    unsigned int channel_index);
+                                                       unsigned int channel_index);
 static void imsar_xdma_channel_destroy(imsar_xdma_channel_t *channel_data);
 static int imsar_xdma_channel_parse_dt(imsar_xdma_channel_t *channel_data);
 
@@ -493,7 +495,31 @@ static unsigned int imsar_xdma_file_poll(struct file *file, poll_table *wait)
 
 static long imsar_xdma_file_ioctl(struct file *file, unsigned int request, unsigned long arg)
 {
-	return -EINVAL;
+	imsar_xdma_file_t *file_data;
+	imsar_xdma_channel_t *channel_data;
+
+	file_data = (imsar_xdma_file_t *)file->private_data;
+	channel_data = file_data->channel;
+
+	switch (request)
+	{
+	case IMSAR_XDMA_IOCTL_GET_BUFFER_SIZE:
+		return imsar_xdma_ioctl_buffer_get_size(channel_data, arg);
+	default:
+		dev_warn(channel_data->xdma_device->device, "unrecognized ioctl cmd: %u", request);
+		return -EINVAL;
+	}
+}
+
+static long imsar_xdma_ioctl_buffer_get_size(imsar_xdma_channel_t *channel_data, unsigned long arg)
+{
+	if (copy_to_user((unsigned int *)arg, &(channel_data->buffer_size_bytes), sizeof(unsigned int)))
+	{
+		dev_warn(channel_data->xdma_device->device, "copy_to_user failed");
+		return -EINVAL;
+	}
+
+	return 0;
 }
 
 static void imsar_xdma_file_init(imsar_xdma_file_t *file_data, imsar_xdma_channel_t *channel)
@@ -583,9 +609,9 @@ static void imsar_xdma_chardev_destroy(imsar_xdma_dev_t *device_data)
 static int imsar_xdma_channel_chardev_create(imsar_xdma_channel_t *channel)
 {
 	// Create device node
-	channel->char_dev_device = device_create(s_device_class, channel->xdma_device->device,              //
-	                                      channel->xdma_device->char_dev_node + channel->channel_index, //
-	                                      channel, "dma_%s", channel->name);
+	channel->char_dev_device = device_create(s_device_class, channel->xdma_device->device,                 //
+	                                         channel->xdma_device->char_dev_node + channel->channel_index, //
+	                                         channel, "dma_%s", channel->name);
 
 	if (IS_ERR(channel->char_dev_device))
 	{
@@ -618,7 +644,8 @@ static void imsar_xdma_channel_setup_transfer(imsar_xdma_channel_t *channel, uns
 	buffer_metadata->transfer_id = transfer_id;
 	buffer_metadata->length = 0;
 
-	imsar_xdma_chan_set_addr_and_len(channel, channel->buffer_bus_addr + buffer_metadata->offset, channel->buffer_size_bytes);
+	imsar_xdma_chan_set_addr_and_len(channel, channel->buffer_bus_addr + buffer_metadata->offset,
+	                                 channel->buffer_size_bytes);
 
 	channel->in_progress_transfer_id = transfer_id;
 }
@@ -629,10 +656,10 @@ static int imsar_xdma_buffer_alloc(imsar_xdma_channel_t *channel)
 	int i;
 
 	// Allocate DMA coherent memory that will be shared with user space
-	channel->buffer_virt_addr = dmam_alloc_coherent(channel->xdma_device->device,                    // dev
-	                                             channel->buffer_size_bytes * channel->buffer_count, // size
-	                                             &channel->buffer_bus_addr,                       // dma_handle (out)
-	                                             GFP_KERNEL);                                  // flags
+	channel->buffer_virt_addr = dmam_alloc_coherent(channel->xdma_device->device,                       // dev
+	                                                channel->buffer_size_bytes * channel->buffer_count, // size
+	                                                &channel->buffer_bus_addr, // dma_handle (out)
+	                                                GFP_KERNEL);               // flags
 
 	if (!channel->buffer_virt_addr)
 	{
@@ -640,11 +667,12 @@ static int imsar_xdma_buffer_alloc(imsar_xdma_channel_t *channel)
 		return -ENOMEM;
 	}
 
-	dev_dbg(channel->xdma_device->device, "alloc DMA memory; VAddr: %px, BAddr: %px, size: %u\n", channel->buffer_virt_addr,
-	        (void *)channel->buffer_bus_addr, channel->buffer_size_bytes * channel->buffer_count);
+	dev_dbg(channel->xdma_device->device, "alloc DMA memory; VAddr: %px, BAddr: %px, size: %u\n",
+	        channel->buffer_virt_addr, (void *)channel->buffer_bus_addr,
+	        channel->buffer_size_bytes * channel->buffer_count);
 
-	channel->buffer_metadata =
-	    devm_kzalloc(channel->xdma_device->device, sizeof(imsar_xdma_buffer_meta_t) * channel->buffer_count, GFP_KERNEL);
+	channel->buffer_metadata = devm_kzalloc(channel->xdma_device->device,
+	                                        sizeof(imsar_xdma_buffer_meta_t) * channel->buffer_count, GFP_KERNEL);
 
 	rc = 0;
 	if (!channel->buffer_metadata)
@@ -756,7 +784,8 @@ static irqreturn_t imsar_xdma_handle_irq(int num, void *channel_data)
 	{
 		if (!(status & FLAG_STATUS_IDLE))
 		{
-			dev_warn(channel->xdma_device->device, "%s: got completion interrupt, but channel is not idle!\n", channel->name);
+			dev_warn(channel->xdma_device->device, "%s: got completion interrupt, but channel is not idle!\n",
+			         channel->name);
 		}
 
 		length = imsar_xdma_chan_read_len(channel);
@@ -814,7 +843,7 @@ static int imsar_xdma_device_parse_dt(imsar_xdma_dev_t *device_data)
 
 // Channel operations
 static imsar_xdma_channel_t *imsar_xdma_channel_create(imsar_xdma_dev_t *device_data, struct device_node *channel_node,
-                                                    unsigned int channel_index)
+                                                       unsigned int channel_index)
 {
 	int rc;
 	imsar_xdma_channel_t *channel_data;
