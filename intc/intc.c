@@ -169,7 +169,7 @@ static unsigned int intc_poll(struct file *file, poll_table *wait)
 	if (file_data->behavior == INTC_BEHAVIOR_NEXT_ONLY)
 	{
 		dev_err(logging_device, "poll not supported with behavior NEXT_ONLY");
-		return POLLERR;
+		return -ENOTSUPP;
 	}
 
 	if (file_data->interrupt_count > 0)
