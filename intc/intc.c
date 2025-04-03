@@ -150,7 +150,7 @@ static ssize_t intc_read(struct file *f, char __user *buf, size_t bytes, loff_t 
 		}
 	}
 
-	return bytes;
+	return 0;
 }
 
 static unsigned int intc_poll(struct file *file, poll_table *wait)
