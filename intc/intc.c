@@ -326,13 +326,10 @@ static long intc_ioctl(struct file *f, unsigned int request, unsigned long arg)
 		return 0;
 	}
 	case TCGETS:
-		// Silently ignore terminal commands
-		ret = -EINVAL;
-		break;
+		return -ENOTTY; // We're not a TTY
 	default:
 		dev_err(logging_device, "file: ioctl() %d, unrecognized request %d\n", ii, request);
-		ret = -EINVAL;
-		break;
+		return -EINVAL;
 	}
 
 	if (copy_to_user((unsigned int *)arg, &ret, sizeof(int)))
