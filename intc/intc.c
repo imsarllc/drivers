@@ -94,13 +94,11 @@ static ssize_t intc_read(struct file *f, char __user *buf, size_t bytes, loff_t 
 	int status;
 	int ii;
 	intc_file_t *file_data;
-	intc_dev_t *dev_data;
 	int count;
 	int timeout_jiffies;
 
 	ii = iminor(f->f_inode);
 	file_data = (intc_file_t *)f->private_data;
-	dev_data = &fid[ii];
 
 	dev_dbg(logging_device, "file: read()  %d\n", ii);
 
@@ -156,13 +154,11 @@ static ssize_t intc_read(struct file *f, char __user *buf, size_t bytes, loff_t 
 static unsigned int intc_poll(struct file *file, poll_table *wait)
 {
 	intc_file_t *file_data;
-	intc_dev_t *dev_data;
 	unsigned int ret;
 	int ii;
 
 	ii = iminor(file->f_inode);
 	file_data = (intc_file_t *)file->private_data;
-	dev_data = &fid[ii];
 
 	ret = 0;
 
