@@ -6,28 +6,16 @@
 #define INTC_INT_COUNT      _IO(INTC_IOCTL_BASE, 0)
 #define INTC_ENABLE         _IO(INTC_IOCTL_BASE, 5)
 #define INTC_TIMEOUT        _IO(INTC_IOCTL_BASE, 6)
+#define INTC_BEHAVIOR		_IO(INTC_IOCTL_BASE, 7)
 
-#ifndef __KERNEL__
-// userspace
-#include <stdio.h>
-#include <unistd.h>
-#include <sys/ioctl.h>
-#include <errno.h>
-
-#ifndef ERESTARTSYS
-#define ERESTARTSYS 512
-#endif // ERESTARTSYS
-
-static inline ssize_t intc_read(int fd, void *buf, size_t bytes)
+enum intc_behavior
 {
-	int res;
-	do
-		res = read(fd, buf, bytes);
-	while(res == -ERESTARTSYS);
-	if(res < 0)
-		printf("errno:%d\n", errno);
-	return res;
-}
-#endif // __KERNEL__
+	// read() and poll() return only on the next interrupt (default; no missed interrupt handling)
+	// Note: Only compatible with blocking read() calls
+	INTC_BEHAVIOR_NEXT_ONLY = 0,
+
+	// read() and poll() return if an interrupt has occurred since the last call or on the next interrupt
+	INTC_BEHAVIOR_NEXT_OR_MISSED = 1,
+};
 
 #endif // _INTC_H_
