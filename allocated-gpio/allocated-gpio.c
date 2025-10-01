@@ -93,8 +93,17 @@ static struct of_device_id allocated_gpio_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, allocated_gpio_of_match);
 
-static int create_pin_attrs(struct platform_device *pdev)
+/**
+ * allocated_gpio_probe - Driver probe function
+ * @pdev: Pointer to the platform_device structure
+ *
+ * Returns '0' on success and failure value on error
+ */
+
+static int allocated_gpio_probe(struct platform_device *pdev)
 {
+	dev_info_once(&pdev->dev, "IMSAR gpio driver version: %s (%s)\n", GIT_DESCRIBE, BUILD_DATE);
+
 	struct device_node *np = pdev->dev.of_node;
 	struct device_node *child;
 	struct gpio_driver_data *data;
@@ -110,8 +119,6 @@ static int create_pin_attrs(struct platform_device *pdev)
 		goto driver_data_error;
 	}
 	pdev->dev.platform_data = data;
-
-	dev_dbg(&pdev->dev, "Creating %d attributes for %s\n", num_attrs, np->name);
 
 	attr_size = num_attrs * sizeof(struct gpio_attribute);
 	data->attr_array = (struct gpio_attribute*)kzalloc(attr_size, GFP_KERNEL);
@@ -140,7 +147,6 @@ static int create_pin_attrs(struct platform_device *pdev)
 			dev_warn(&pdev->dev, "no property gpio for child of allocated-gpio\n");
 			continue;
 		}
-		//dev_info(&pdev->dev, "GPIO #%d = %s(%d)\n", gpio, child->name, flags);
 
 		data->attr_array[num_attrs].n.attr.name = child->name;
 		data->attr_array[num_attrs].n.attr.mode = S_IRUGO;
@@ -169,13 +175,15 @@ static int create_pin_attrs(struct platform_device *pdev)
 			}
 		}
 
-		dev_info(&pdev->dev, "GPIO #%d = %s(%d)\n", gpio, child->name, flags);
+		dev_dbg(&pdev->dev, "GPIO #%d = %s(%d)\n", gpio, child->name, flags);
+
 		status = gpio_request_one(gpio, flags, child->name);
 		if (status)
 		{
-			dev_info(&pdev->dev, "Unable to request GPIO: %d(%s)", gpio, child->name);
+			dev_warn(&pdev->dev, "Unable to request GPIO: %d(%s)", gpio, child->name);
 			continue;
 		}
+
 		gpio_export_link(&pdev->dev, child->name, gpio);
 		data->attr_list[num_attrs] = &data->attr_array[num_attrs].n.attr;
 		num_attrs++;
@@ -200,25 +208,6 @@ driver_data_error:
 	return -ENOMEM;
 }
 
-
-/**
- * allocated_gpio_probe - Driver probe function
- * @pdev: Pointer to the platform_device structure
- *
- * Returns '0' on success and failure value on error
- */
-
-static int allocated_gpio_probe(struct platform_device *pdev)
-{
-	dev_info(&pdev->dev, "%s version: %s (%s)\n", "IMSAR gpio driver", GIT_DESCRIBE, BUILD_DATE);
-
-	int status = create_pin_attrs(pdev);
-
-	dev_info(&pdev->dev, "Probed IMSAR allocated_gpio\n");
-
-	return status;
-}
-
 /**
  * allocated_gpio_remove - Driver remove function
  * @pdev: Pointer to the platform_device structure
@@ -234,7 +223,7 @@ static int allocated_gpio_remove(struct platform_device *pdev)
 	{
 		s32 gpio;
 		gpio = data->attr_array[ii].gpio;
-		dev_info(&pdev->dev, "removing GPIO = %s:%d", data->attr_array[ii].n.attr.name, gpio);
+		dev_dbg(&pdev->dev, "removing GPIO = %s:%d", data->attr_array[ii].n.attr.name, gpio);
 		if (gpio >= 0)
 		{
 				gpio_unexport(gpio);
