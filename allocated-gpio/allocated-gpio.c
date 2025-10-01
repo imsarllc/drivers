@@ -93,7 +93,7 @@ static struct of_device_id allocated_gpio_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, allocated_gpio_of_match);
 
-static void create_pin_attrs(struct platform_device *pdev)
+static int create_pin_attrs(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
 	struct device_node *child;
@@ -107,7 +107,7 @@ static void create_pin_attrs(struct platform_device *pdev)
 	data = (struct gpio_driver_data*)kzalloc(sizeof(struct gpio_driver_data), GFP_KERNEL);
 	if (PTR_ERR_OR_ZERO(data))
 	{
-		goto error;
+		goto driver_data_error;
 	}
 	pdev->dev.platform_data = data;
 
@@ -134,11 +134,10 @@ static void create_pin_attrs(struct platform_device *pdev)
 		enum of_gpio_flags of_flags = 0;
 		s32 gpio = of_get_gpio_flags(child, 0, &of_flags);
 		if (gpio == -EPROBE_DEFER) {
-			dev_info(&pdev->dev, "GPIO %s not available yet.  Try Again?\n", child->name);
-			continue;
+			return dev_err_probe(&pdev->dev, gpio, "GPIO %s not available yet", child->name);
 		}
 		if (gpio < 0) {
-			dev_info(&pdev->dev, "no property gpio for child of allocated-gpio\n");
+			dev_warn(&pdev->dev, "no property gpio for child of allocated-gpio\n");
 			continue;
 		}
 		//dev_info(&pdev->dev, "GPIO #%d = %s(%d)\n", gpio, child->name, flags);
@@ -185,17 +184,20 @@ static void create_pin_attrs(struct platform_device *pdev)
 	data->reg_attr_group.attrs = data->attr_list;
 	data->reg_attr_group.name ="io";
 	status = sysfs_create_group(&pdev->dev.kobj, &data->reg_attr_group);
+
 	if (status)
 		dev_err(&pdev->dev, "Failed to create pin attributes: %d\n", status);
-	return;
+
+	return 0;
 
 list_error:
 	data->attr_list = 0;
 	kfree(data->attr_array);
 array_error:
 	data->attr_array = 0;
-error:
+driver_data_error:
 	dev_err(&pdev->dev, "Unable to allocate register attributes\n");
+	return -ENOMEM;
 }
 
 
@@ -210,11 +212,11 @@ static int allocated_gpio_probe(struct platform_device *pdev)
 {
 	dev_info(&pdev->dev, "%s version: %s (%s)\n", "IMSAR gpio driver", GIT_DESCRIBE, BUILD_DATE);
 
-	create_pin_attrs(pdev);
+	int status = create_pin_attrs(pdev);
 
 	dev_info(&pdev->dev, "Probed IMSAR allocated_gpio\n");
 
-	return 0;
+	return status;
 }
 
 /**
