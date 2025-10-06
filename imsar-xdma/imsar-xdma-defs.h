@@ -108,6 +108,10 @@ struct imsar_xdma_chan_st
 	// Consumers
 	spinlock_t consumers_spinlock;    // held when changing consuming_files
 	struct list_head consuming_files; // points at imsar_user_interrupt_file_t entries
+
+	// hardirq to threaded IRQ data
+	unsigned int status_on_irq_valid;
+	u32 status_on_irq_value;
 };
 
 struct imsar_xdma_file_st

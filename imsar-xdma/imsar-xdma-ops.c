@@ -23,6 +23,8 @@
 
 #include "imsar-xdma-ops.h"
 
+#include <linux/delay.h>
+
 u32 imsar_xdma_reg_read(imsar_xdma_dev_t *xdma_dev, unsigned int reg)
 {
 	u32 val = readl(xdma_dev->regs + reg);
@@ -42,9 +44,21 @@ void imsar_xdma_reg_write(imsar_xdma_dev_t *xdma_dev, unsigned int reg, u32 valu
 	writel(value, xdma_dev->regs + reg);
 }
 
-void imsar_xdma_reset(imsar_xdma_dev_t *xdma_dev)
+void imsar_xdma_reset_async(imsar_xdma_dev_t *xdma_dev)
 {
 	imsar_xdma_reg_write(xdma_dev, REG_CONTROL, FLAG_CONTROL_RESET);
+}
+
+void imsar_xdma_reset_sync(imsar_xdma_dev_t *xdma_dev)
+{
+	// Request the reset
+	imsar_xdma_reset_async(xdma_dev);
+
+	// Wait for it to finish
+	while (imsar_xdma_reg_read(xdma_dev, REG_CONTROL) & FLAG_CONTROL_RESET)
+	{
+		usleep_range(1, 10);
+	}
 }
 
 u32 imsar_xdma_chan_reg_read(imsar_xdma_channel_t *channel, unsigned int reg)
@@ -79,7 +93,7 @@ void imsar_xdma_chan_irq_disable(imsar_xdma_channel_t *channel)
 {
 	if (channel->log_transfer_events)
 	{
-		dev_dbg(channel->xdma_device->device, "%s irq disable", channel->name);
+		dev_dbg(channel->xdma_device->device, "%s: irq disable", channel->name);
 	}
 	imsar_xdma_chan_reg_bit_clr_set(channel, REG_CONTROL, FLAG_CONTROL_ALL_IRQ_EN, 0);
 }
@@ -88,7 +102,7 @@ void imsar_xdma_chan_irq_ack(imsar_xdma_channel_t *channel)
 {
 	if (channel->log_transfer_events)
 	{
-		dev_dbg(channel->xdma_device->device, "%s irq ack", channel->name);
+		dev_dbg(channel->xdma_device->device, "%s: irq ack", channel->name);
 	}
 	imsar_xdma_chan_reg_bit_clr_set(channel, REG_STATUS, FLAG_STATUS_ALL_IRQ, FLAG_STATUS_ALL_IRQ);
 }

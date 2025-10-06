@@ -56,7 +56,8 @@
 u32 imsar_xdma_reg_read(imsar_xdma_dev_t *xdma_dev, unsigned int reg);
 void imsar_xdma_reg_write(imsar_xdma_dev_t *xdma_dev, unsigned int reg, u32 value);
 
-void imsar_xdma_reset(imsar_xdma_dev_t *xdma_dev);
+void imsar_xdma_reset_async(imsar_xdma_dev_t *xdma_dev); // request a reset of the DMA core (both channels)
+void imsar_xdma_reset_sync(imsar_xdma_dev_t *xdma_dev);  // reset the DMA core (wait for it to complete)
 
 u32 imsar_xdma_chan_reg_read(imsar_xdma_channel_t *channel, unsigned int reg);
 void imsar_xdma_chan_reg_write(imsar_xdma_channel_t *channel, unsigned int reg, u32 value);
