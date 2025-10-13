@@ -187,7 +187,7 @@ ssize_t imsar_xdma_sysfs_reset_store(struct device *dev, struct device_attribute
 	{
 		return 0;
 	}
-	imsar_xdma_reset(channel->xdma_device);
+	imsar_xdma_reset_sync(channel->xdma_device);
 	return size;
 }
 

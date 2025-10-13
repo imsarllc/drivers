@@ -102,6 +102,7 @@ static void imsar_xdma_buffer_free(imsar_xdma_channel_t *channel);
 
 // Interrupt handler
 static irqreturn_t imsar_xdma_handle_irq(int num, void *channel_data);
+static irqreturn_t imsar_xdma_handle_irq_thread(int num, void *channel_data);
 
 // Device operations
 static int imsar_xdma_device_data_init(struct platform_device *platform_device, imsar_xdma_dev_t *device_data);
@@ -205,8 +206,8 @@ static int imsar_xdma_probe(struct platform_device *platform_device)
 		return PTR_ERR(device_data->regs);
 	}
 
-	// Reset the device (reset is not instantaneous)
-	imsar_xdma_reset(device_data);
+	// Request a reset of the device
+	imsar_xdma_reset_async(device_data);
 
 	// Create character device region big enough for channels
 	rc = imsar_xdma_chardev_create(device_data);
@@ -734,6 +735,33 @@ static imsar_xdma_buffer_meta_t *imsar_xdma_buffer_meta(imsar_xdma_channel_t *ch
 
 static irqreturn_t imsar_xdma_handle_irq(int num, void *channel_data)
 {
+	u32 status;
+	imsar_xdma_channel_t *channel = channel_data;
+
+	status = imsar_xdma_chan_reg_read(channel, REG_STATUS);
+
+	if (!(status & FLAG_STATUS_ALL_IRQ)) // Not our interrupt
+	{
+		dev_dbg(channel->xdma_device->device, "%s: unexpected interrupt\n", channel->name);
+		return IRQ_NONE;
+	}
+
+	channel->status_on_irq_valid = true;
+	channel->status_on_irq_value = status;
+
+	// ACK the interrupt
+	imsar_xdma_chan_irq_ack(channel);
+
+	if (channel->log_transfer_events)
+	{
+		dev_dbg(channel->xdma_device->device, "%s: waking irq thread for status 0x%08x\n", channel->name, status);
+	}
+
+	return IRQ_WAKE_THREAD; // tell the kernel to run our IRQ handling thread
+}
+
+static irqreturn_t imsar_xdma_handle_irq_thread(int num, void *channel_data)
+{
 	imsar_xdma_channel_t *channel;
 	u32 status;
 	unsigned int in_progress_transfer_id;
@@ -743,14 +771,24 @@ static irqreturn_t imsar_xdma_handle_irq(int num, void *channel_data)
 
 	channel = channel_data;
 	in_progress_transfer_id = channel->in_progress_transfer_id;
-	status = imsar_xdma_chan_reg_read(channel, REG_STATUS);
 
-	if (!(status & FLAG_STATUS_ALL_IRQ)) // Not our interrupt
+	if (!channel->status_on_irq_valid)
 	{
-		return IRQ_NONE;
+		dev_err(channel->xdma_device->device, "%s: irq handler awake, but status unavailable\n", channel->name);
+		return IRQ_HANDLED;
 	}
 
-	imsar_xdma_chan_irq_ack(channel);
+	// Retrieve status code from hard IRQ
+	status = channel->status_on_irq_value;
+
+	// Clear status
+	channel->status_on_irq_valid = false;
+	channel->status_on_irq_value = 0x00000000;
+
+	if (channel->log_transfer_events)
+	{
+		dev_dbg(channel->xdma_device->device, "%s: irq handler awake: got status 0x%08x\n", channel->name, status);
+	}
 
 	if (status & FLAG_STATUS_ERR_IRQ)
 	{
@@ -758,24 +796,30 @@ static irqreturn_t imsar_xdma_handle_irq(int num, void *channel_data)
 
 		if (status & FLAG_STATUS_DMA_SLV_ERR)
 		{
-			dev_warn(channel->xdma_device->device, "%s: DMA Slave Error\n", channel->name);
+			dev_crit(channel->xdma_device->device, "%s: DMA Slave Error\n", channel->name);
 		}
 
 		if (status & FLAG_STATUS_DMA_DEC_ERR)
 		{
-			dev_warn(channel->xdma_device->device, "%s: DMA Decode Error\n", channel->name);
+			dev_crit(channel->xdma_device->device, "%s: DMA Decode Error\n", channel->name);
 		}
 
 		if (status & FLAG_STATUS_DMA_INT_ERR)
 		{
-			dev_warn(channel->xdma_device->device, "%s: DMA Internal Error\n", channel->name);
+			dev_crit(channel->xdma_device->device, "%s: DMA Internal Error\n", channel->name);
 		}
 
-		// Clear all error flags
-		// imsar_xdma_chan_reg_bit_clr_set(channel, REG_STATUS, FLAG_STATUS_DMA_ALL_ERRS, 0);
+		// Reset the DMA core
+		dev_crit(channel->xdma_device->device, "%s: Resetting device due to error\n", channel->name);
+		imsar_xdma_reset_sync(channel->xdma_device);
+
+		// Re-enable interrupts
+		imsar_xdma_chan_irq_enable(channel);
 
 		// Restart the channel
 		imsar_xdma_chan_start(channel);
+
+		status = imsar_xdma_chan_reg_read(channel, REG_STATUS);
 
 		length = 0;
 		next_transfer_id = in_progress_transfer_id;
@@ -797,6 +841,11 @@ static irqreturn_t imsar_xdma_handle_irq(int num, void *channel_data)
 		}
 
 		next_transfer_id = in_progress_transfer_id + 1;
+	}
+	else
+	{
+		dev_warn(channel->xdma_device->device, "%s: got interrupt, but status did not indicate completion OR error\n",
+		         channel->name);
 	}
 
 	// Set the address and length for the next transfer (this allows the hardware to continue)
@@ -865,6 +914,9 @@ static imsar_xdma_channel_t *imsar_xdma_channel_create(imsar_xdma_dev_t *device_
 	spin_lock_init(&channel_data->consumers_spinlock);
 	INIT_LIST_HEAD(&channel_data->consuming_files);
 
+	channel_data->status_on_irq_valid = false;
+	channel_data->status_on_irq_value = 0x00000000;
+
 	// Parse channel device tree node
 	rc = imsar_xdma_channel_parse_dt(channel_data);
 	if (rc)
@@ -879,9 +931,9 @@ static imsar_xdma_channel_t *imsar_xdma_channel_create(imsar_xdma_dev_t *device_
 		return ERR_PTR(rc);
 	}
 
-	// Request interrupt
-	rc = devm_request_irq(device_data->device, channel_data->irq, imsar_xdma_handle_irq, IRQF_SHARED, "imsar-xdma",
-	                      channel_data);
+	// Request threaded interrupt handler
+	rc = devm_request_threaded_irq(device_data->device, channel_data->irq, imsar_xdma_handle_irq,
+	                               imsar_xdma_handle_irq_thread, IRQF_SHARED, "imsar-xdma", channel_data);
 	if (rc)
 	{
 		dev_err(device_data->device, "unable to request IRQ %d\n", channel_data->irq);
