@@ -38,19 +38,18 @@ struct imsar_pcie_intc_info {
 #define X_MER_ME (1 << 0)
 #define X_MER_HIE (1 << 1)
 
-static void imsar_pcie_int_axi_enable_or_unmask(struct irq_data *data)
+static void imsar_pcie_int_axi_enable(struct irq_data *data)
 {
 	unsigned long mask = 1 << data->hwirq;
 	struct imsar_pcie_intc_info *local_intc = irq_data_get_irq_chip_data(data);
 
-	dev_dbg(&local_intc->pci_dev->dev, "Enable irq=%d, hw_irq=%lu\n", data->irq, data->hwirq);
+	dev_dbg(&local_intc->pci_dev->dev, "Enable/Unmask irq=%d, hw_irq=%lu\n", data->irq,
+		data->hwirq);
 
-	// iowrite16(mask, local_intc->baseaddr + SIE);
-	/*
-	 * ack level irqs because they can't be acked during
-	 * ack function since the handle_level_irq function
-	 * acks the irq before calling the interrupt handler
-	 */
+	// Level interrupts in this "chip" will immediately re-trigger after we ACK the
+	// interrupt controller, but before the ISR runs for the connected device.
+	// This is because the interrupt is still active from the connected device.
+	// So, to work-around this, we will ACK the interrupt during the unmask operation here.
 	if (irqd_is_level_type(data)) {
 		iowrite32(mask, local_intc->x_baseaddr + X_IAR);
 	}
@@ -58,13 +57,14 @@ static void imsar_pcie_int_axi_enable_or_unmask(struct irq_data *data)
 	iowrite32(mask, local_intc->x_baseaddr + X_SIE);
 }
 
-static void imsar_pcie_int_axi_disable_or_mask(struct irq_data *data)
+static void imsar_pcie_int_axi_disable(struct irq_data *data)
 {
 	unsigned long mask = 1 << data->hwirq;
 
 	struct imsar_pcie_intc_info *local_intc = irq_data_get_irq_chip_data(data);
 
-	dev_dbg(&local_intc->pci_dev->dev, "Disable irq=%d, hw_irq=%lu\n", data->irq, data->hwirq);
+	dev_dbg(&local_intc->pci_dev->dev, "Disable/Mask irq=%d, hw_irq=%lu\n", data->irq,
+		data->hwirq);
 
 	iowrite32(mask, local_intc->x_baseaddr + X_CIE);
 }
@@ -72,6 +72,7 @@ static void imsar_pcie_int_axi_disable_or_mask(struct irq_data *data)
 static void imsar_pcie_int_axi_ack(struct irq_data *data)
 {
 	struct imsar_pcie_intc_info *local_intc = irq_data_get_irq_chip_data(data);
+	dev_dbg(&local_intc->pci_dev->dev, "Ack irq=%d, hw_irq=%lu\n", data->irq, data->hwirq);
 	iowrite32(1 << data->hwirq, local_intc->x_baseaddr + X_IAR);
 }
 
@@ -79,18 +80,32 @@ static void imsar_pcie_int_axi_mask_ack(struct irq_data *data)
 {
 	unsigned long mask = 1 << data->hwirq;
 	struct imsar_pcie_intc_info *local_intc = irq_data_get_irq_chip_data(data);
+	dev_dbg(&local_intc->pci_dev->dev, "Mask/Ack irq=%d, hw_irq=%lu\n", data->irq, data->hwirq);
 	iowrite32(mask, local_intc->x_baseaddr + X_CIE);
 	iowrite32(mask, local_intc->x_baseaddr + X_IAR);
 }
 
+static int imsar_pcie_int_axi_set_type(struct irq_data *data, unsigned int type)
+{
+	struct imsar_pcie_intc_info *local_intc = irq_data_get_irq_chip_data(data);
+
+	dev_dbg(&local_intc->pci_dev->dev, "set_type irq=%d, hw_irq=%lu, type=%x\n", data->irq,
+		data->hwirq, type);
+
+	irqd_set_trigger_type(data, type);
+
+	return 0;
+}
+
 static struct irq_chip intc_dev = {
-	.name = "msi-bridge",
-	.irq_enable = imsar_pcie_int_axi_enable_or_unmask,
-	.irq_unmask = imsar_pcie_int_axi_enable_or_unmask,
-	.irq_disable = imsar_pcie_int_axi_disable_or_mask,
-	.irq_mask = imsar_pcie_int_axi_disable_or_mask,
+	.name = "fpga",
+	.irq_enable = imsar_pcie_int_axi_enable,
+	.irq_unmask = imsar_pcie_int_axi_enable,
+	.irq_disable = imsar_pcie_int_axi_disable,
+	.irq_mask = imsar_pcie_int_axi_disable,
 	.irq_ack = imsar_pcie_int_axi_ack,
 	.irq_mask_ack = imsar_pcie_int_axi_mask_ack,
+	.irq_set_type = imsar_pcie_int_axi_set_type,
 };
 
 static unsigned int imsar_pcie_int_get_irq(struct imsar_pcie_intc_info *local_intc)
@@ -105,7 +120,6 @@ static unsigned int imsar_pcie_int_get_irq(struct imsar_pcie_intc_info *local_in
 		irq = irq_find_mapping(local_intc->domain, hwirq);
 	}
 
-	// pr_err("imsar_pcie_int_get_irq: hwirq=%d, irq=%d\n", hwirq, irq);
 	return irq;
 }
 
@@ -117,24 +131,14 @@ static int imsar_pcie_int_xintc_map(struct irq_domain *d, unsigned int irq, irq_
 		"Map IRQ: domain = %s, irq = %d, hw_irq=%ld, host_data %p\n", //
 		d->name, irq, hw, d->host_data);
 
-	// This should be set by the consumer, not the IRQ chip...
-	local_intc->edge_mask = 0xFFFFFFFF;
-	if (local_intc->edge_mask & (1 << hw)) {
-		irq_set_chip_and_handler_name(irq, &intc_dev, handle_edge_irq, "edge");
-		irq_clear_status_flags(irq, IRQ_LEVEL);
-		irq_set_irq_type(irq, IRQ_TYPE_EDGE_RISING);
-	} else {
-		irq_set_chip_and_handler_name(irq, &intc_dev, handle_level_irq, "level");
-		irq_set_status_flags(irq, IRQ_LEVEL);
-		irq_set_irq_type(irq, IRQ_TYPE_LEVEL_HIGH);
-	}
-
+	irq_set_chip(irq, &intc_dev);
 	irq_set_chip_data(irq, local_intc);
+
 	return 0;
 }
 
 struct irq_domain_ops imsar_pcie_intc_chip_ops = {
-	.xlate = irq_domain_xlate_onecell,
+	.xlate = irq_domain_xlate_onetwocell,
 	.map = imsar_pcie_int_xintc_map,
 };
 
@@ -144,7 +148,6 @@ static void imsar_pcie_int_irq_flow_handler(struct irq_desc *desc)
 	struct imsar_pcie_intc_info *local_intc = irq_data_get_irq_handler_data(&desc->irq_data);
 
 	int irq;
-	//pr_info("irq_handler called for %s: %d", desc->name, desc->irq_data.irq);
 
 	chained_irq_enter(chip, desc);
 
@@ -153,6 +156,9 @@ static void imsar_pcie_int_irq_flow_handler(struct irq_desc *desc)
 	 * controller to see which interrupt is active
 	 */
 	irq = imsar_pcie_int_get_irq(local_intc);
+	if (!irq) {
+		dev_dbg(&local_intc->pci_dev->dev, "no interrupts to handle");
+	}
 	while (irq) {
 		generic_handle_irq(irq);
 		irq = imsar_pcie_int_get_irq(local_intc);
