@@ -120,6 +120,15 @@ static unsigned int imsar_pcie_int_get_irq(struct imsar_pcie_intc_info *local_in
 	return irq;
 }
 
+void imsar_pcie_int_handle_flexible_irq(struct irq_desc *desc)
+{
+	if (irqd_is_level_type(&desc->irq_data)) {
+		handle_level_irq(desc);
+	} else {
+		handle_edge_irq(desc);
+	}
+}
+
 static int imsar_pcie_int_xintc_map(struct irq_domain *d, unsigned int irq, irq_hw_number_t hw)
 {
 	struct irq_data *irq_data;
@@ -131,8 +140,8 @@ static int imsar_pcie_int_xintc_map(struct irq_domain *d, unsigned int irq, irq_
 	irq_data = irq_get_irq_data(irq);
 
 	irq_set_chip_data(irq, local_intc);
-	irq_set_chip_and_handler(irq, &intc_dev, handle_edge_irq);
-	irq_set_irq_type(irq, IRQ_TYPE_EDGE_RISING);
+	irq_set_chip_and_handler(irq, &intc_dev, imsar_pcie_int_handle_flexible_irq);
+	irq_set_irq_type(irq, IRQ_TYPE_LEVEL_HIGH);
 
 	return 0;
 }
