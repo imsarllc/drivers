@@ -12,7 +12,6 @@
 struct imsar_pcie_intc_info {
 	void __iomem *pcie_baseaddr;
 	void __iomem *x_baseaddr;
-	uint32_t edge_mask;
 	struct irq_domain *domain;
 	struct pci_dev *pci_dev;
 };
@@ -89,12 +88,10 @@ static int imsar_pcie_int_axi_set_type(struct irq_data *data, unsigned int type)
 {
 	struct imsar_pcie_intc_info *local_intc = irq_data_get_irq_chip_data(data);
 
-	dev_dbg(&local_intc->pci_dev->dev, "set_type irq=%d, hw_irq=%lu, type=%x\n", data->irq,
-		data->hwirq, type);
+	dev_info(&local_intc->pci_dev->dev, "Set type irq=%d, hw_irq=%lu, type=%x\n", data->irq,
+		 data->hwirq, type);
 
-	irqd_set_trigger_type(data, type);
-
-	return 0;
+	return IRQ_SET_MASK_OK;
 }
 
 static struct irq_chip intc_dev = {
@@ -123,22 +120,34 @@ static unsigned int imsar_pcie_int_get_irq(struct imsar_pcie_intc_info *local_in
 	return irq;
 }
 
+void imsar_pcie_int_handle_flexible_irq(struct irq_desc *desc)
+{
+	if (irqd_is_level_type(&desc->irq_data)) {
+		handle_level_irq(desc);
+	} else {
+		handle_edge_irq(desc);
+	}
+}
+
 static int imsar_pcie_int_xintc_map(struct irq_domain *d, unsigned int irq, irq_hw_number_t hw)
 {
+	struct irq_data *irq_data;
 	struct imsar_pcie_intc_info *local_intc = d->host_data;
 
-	dev_dbg(&local_intc->pci_dev->dev,
-		"Map IRQ: domain = %s, irq = %d, hw_irq=%ld, host_data %p\n", //
-		d->name, irq, hw, d->host_data);
+	dev_info(&local_intc->pci_dev->dev, "Map IRQ: domain = %s, irq = %d, hw_irq=%ld\n", d->name,
+		 irq, hw);
 
-	irq_set_chip(irq, &intc_dev);
+	irq_data = irq_get_irq_data(irq);
+
 	irq_set_chip_data(irq, local_intc);
+	irq_set_chip_and_handler(irq, &intc_dev, imsar_pcie_int_handle_flexible_irq);
+	irq_set_irq_type(irq, IRQ_TYPE_LEVEL_HIGH);
 
 	return 0;
 }
 
 struct irq_domain_ops imsar_pcie_intc_chip_ops = {
-	.xlate = irq_domain_xlate_onetwocell,
+	.xlate = irq_domain_xlate_twocell,
 	.map = imsar_pcie_int_xintc_map,
 };
 
@@ -151,10 +160,6 @@ static void imsar_pcie_int_irq_flow_handler(struct irq_desc *desc)
 
 	chained_irq_enter(chip, desc);
 
-	/*
-	 * ignore the irq input as we now need to query the AXI interrupt
-	 * controller to see which interrupt is active
-	 */
 	irq = imsar_pcie_int_get_irq(local_intc);
 	if (!irq) {
 		dev_dbg(&local_intc->pci_dev->dev, "no interrupts to handle");
