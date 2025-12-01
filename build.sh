@@ -14,6 +14,11 @@ if [[ $DRIVER == "all" ]]; then
         $0 $driver $2
     done
     exit
+else
+    if [[ ! -r $1 ]]; then
+        echo "No driver matching name: $1"
+        exit 1
+    fi
 fi
 
 case "$2" in
