@@ -48,9 +48,6 @@
 struct dtbocfg_overlay_item
 {
 	struct config_item item;
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 17, 0))
-	struct device_node *node;
-#endif
 	int id;
 	void *dtbo;
 	int dtbo_size;
@@ -64,76 +61,21 @@ struct dtbocfg_overlay_item
 static int dtbocfg_overlay_item_create(struct dtbocfg_overlay_item *overlay)
 {
 	int ret_val;
-
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0))
-	{
-		int ovcs_id = 0;
+	int ovcs_id = 0;
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0))
-		ret_val = of_overlay_fdt_apply(overlay->dtbo, overlay->dtbo_size, &ovcs_id, NULL);
+	ret_val = of_overlay_fdt_apply(overlay->dtbo, overlay->dtbo_size, &ovcs_id, NULL);
 #else
-		ret_val = of_overlay_fdt_apply(overlay->dtbo, overlay->dtbo_size, &ovcs_id);
+	ret_val = of_overlay_fdt_apply(overlay->dtbo, overlay->dtbo_size, &ovcs_id);
 #endif
-		if (ret_val != 0)
-		{
-			pr_err("%s: Failed to apply overlay (ret_val=%d)\n", __func__, ret_val);
-			goto failed;
-		}
-		overlay->id = ovcs_id;
-		pr_debug("%s: apply OK(id=%d)\n", __func__, ovcs_id);
-	}
-#else
-
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 7, 0))
-	of_fdt_unflatten_tree(overlay->dtbo, NULL, &overlay->node);
-#else
-	of_fdt_unflatten_tree(overlay->dtbo, &overlay->node);
-#endif
-	if (overlay->node == NULL)
+	if (ret_val != 0)
 	{
-		pr_err("%s: failed to unflatten tree\n", __func__);
-		ret_val = -EINVAL;
+		pr_err("%s: Failed to apply overlay (ret_val=%d)\n", __func__, ret_val);
 		goto failed;
 	}
-	pr_debug("%s: unflattened OK\n", __func__);
+	overlay->id = ovcs_id;
+	pr_debug("%s: apply OK(id=%d)\n", __func__, ovcs_id);
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
-	{
-		int ovcs_id = 0;
-
-		ret_val = of_overlay_apply(overlay->node, &ovcs_id);
-		if (ret_val != 0)
-		{
-			pr_err("%s: Failed to apply overlay (ret_val=%d)\n", __func__, ret_val);
-			goto failed;
-		}
-		overlay->id = ovcs_id;
-		pr_debug("%s: apply OK(id=%d)\n", __func__, ovcs_id);
-	}
-#else
-	{
-		of_node_set_flag(overlay->node, OF_DETACHED);
-
-		ret_val = of_resolve_phandles(overlay->node);
-		if (ret_val != 0)
-		{
-			pr_err("%s: Failed to resolve tree\n", __func__);
-			goto failed;
-		}
-		pr_debug("%s: resolved OK\n", __func__);
-
-		ret_val = of_overlay_create(overlay->node);
-		if (ret_val < 0)
-		{
-			pr_err("%s: Failed to create overlay (ret_val=%d)\n", __func__, ret_val);
-			goto failed;
-		}
-		overlay->id = ret_val;
-	}
-#endif
-
-#endif
-	pr_debug("%s: create OK\n", __func__);
 	return 0;
 
 failed:
@@ -149,11 +91,7 @@ static void dtbocfg_overlay_item_release(struct dtbocfg_overlay_item *overlay)
 {
 	if (overlay->id >= 0)
 	{
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
 		of_overlay_remove(&overlay->id);
-#else
-		of_overlay_destroy(overlay->id);
-#endif
 		overlay->id = -1;
 	}
 }
