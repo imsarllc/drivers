@@ -1,0 +1,11 @@
+named_gpio {
+    compatible = "simple-bus";
+
+    rf_power {
+        compatible = "imsar,named-gpio";
+        gpio = <&gpio ...>;
+        imsar,name = "rf_power";
+        imsar,direction = "output"; // or "input"
+        imsar,initial-value = <0>; // omit for inputs
+    };
+}
