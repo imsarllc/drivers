@@ -1260,6 +1260,8 @@ static int xadc_parse_dt(struct iio_dev *indio_dev, struct device_node *np,
 			if (of_property_read_bool(child, "xlnx,bipolar"))
 				chan->scan_type.sign = 's';
 
+			chan->extend_name = child->name; // IMSAR addition
+
 			if (reg == 0) {
 				chan->scan_index = 11;
 				chan->address = XADC_REG_VPVN;
