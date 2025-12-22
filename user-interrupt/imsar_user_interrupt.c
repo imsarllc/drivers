@@ -389,7 +389,7 @@ static long imsar_user_interrupt_ioctl(struct file *file, unsigned int request, 
 		}
 
 		dev_info(device_data->device, "timeout: %d ms\n", tmp);
-		file_data->timeout_ms = (tmp * HZ) / 1000;
+		file_data->timeout_ms = tmp;
 		return 0;
 	}
 	case IMSAR_USER_INTERRUPT_IOCTL_SET_BEHAVIOR:
