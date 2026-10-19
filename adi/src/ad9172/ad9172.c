@@ -76,6 +76,7 @@ struct ad9172_state {
 	u8 nco_main_enable;
 	u8 nco_channel_enable;
 	u8 logic_lanes[8];
+	u16 debug_reg_addr;
 };
 
 struct ad9172_jesd204_priv {
@@ -508,6 +509,7 @@ static const struct regmap_config ad9172_regmap_config = {
 	.val_bits = 8,
 	.read_flag_mask = 0x80,
 	.cache_type = REGCACHE_NONE,
+	.max_register = 0x7B5,
 };
 
 static int delay_us(void *user_data, unsigned int us)
@@ -652,6 +654,103 @@ static ssize_t ad9172_attr_show(struct device *dev,
 
 	return ret;
 }
+
+static ssize_t reg_address_show(struct device *dev,
+				 struct device_attribute *attr,
+				 char *buf)
+{
+	struct spi_device *spi = to_spi_device(dev);
+	struct cf_axi_converter *conv = spi_get_drvdata(spi);
+	struct ad9172_state *st = container_of(conv, struct ad9172_state, conv);
+	int ret;
+
+	mutex_lock(&conv->lock);
+	ret = sprintf(buf, "0x%03x\n", st->debug_reg_addr);
+	mutex_unlock(&conv->lock);
+
+	return ret;
+}
+
+static ssize_t reg_address_store(struct device *dev,
+				  struct device_attribute *attr,
+				  const char *buf, size_t len)
+{
+	struct spi_device *spi = to_spi_device(dev);
+	struct cf_axi_converter *conv = spi_get_drvdata(spi);
+	struct ad9172_state *st = container_of(conv, struct ad9172_state, conv);
+	u16 addr;
+	int ret;
+
+	ret = kstrtou16(buf, 0, &addr);
+	if (ret)
+		return ret;
+
+	if (addr > 0x7B5)
+		return -EINVAL;
+
+	mutex_lock(&conv->lock);
+	st->debug_reg_addr = addr;
+	mutex_unlock(&conv->lock);
+
+	return len;
+}
+
+static ssize_t reg_value_show(struct device *dev,
+			      struct device_attribute *attr,
+			      char *buf)
+{
+	struct spi_device *spi = to_spi_device(dev);
+	struct cf_axi_converter *conv = spi_get_drvdata(spi);
+	struct ad9172_state *st = container_of(conv, struct ad9172_state, conv);
+	u32 val;
+	int ret;
+
+	mutex_lock(&conv->lock);
+	ret = regmap_read(st->map, st->debug_reg_addr, &val);
+	mutex_unlock(&conv->lock);
+
+	if (ret < 0)
+		return ret;
+
+	return sprintf(buf, "0x%02x\n", val);
+}
+
+static ssize_t reg_value_store(struct device *dev,
+			       struct device_attribute *attr,
+			       const char *buf, size_t len)
+{
+	struct spi_device *spi = to_spi_device(dev);
+	struct cf_axi_converter *conv = spi_get_drvdata(spi);
+	struct ad9172_state *st = container_of(conv, struct ad9172_state, conv);
+	u32 val;
+	int ret;
+
+	ret = kstrtou32(buf, 0, &val);
+	if (ret)
+		return ret;
+
+	if (val > 0xFF)
+		return -EINVAL;
+
+	mutex_lock(&conv->lock);
+	ret = regmap_write(st->map, st->debug_reg_addr, val);
+	mutex_unlock(&conv->lock);
+
+	return ret ? ret : len;
+}
+
+static DEVICE_ATTR_RW(reg_address);
+static DEVICE_ATTR_RW(reg_value);
+
+static struct attribute *ad9172_reg_attrs[] = {
+	&dev_attr_reg_address.attr,
+	&dev_attr_reg_value.attr,
+	NULL,
+};
+
+static const struct attribute_group ad9172_reg_attr_group = {
+	.attrs = ad9172_reg_attrs,
+};
 
 static IIO_DEVICE_ATTR(out_voltage0_nco_frequency, 0644,
 		       ad9172_attr_show,
@@ -1223,11 +1322,21 @@ static int ad9172_probe(struct spi_device *spi)
 
 	spi_set_drvdata(spi, conv);
 
+	ret = sysfs_create_group(&spi->dev.kobj, &ad9172_reg_attr_group);
+	if (ret)
+		dev_warn(&spi->dev, "Failed to create sysfs register attributes\n");
+
 	dev_info(&spi->dev, "Probed.\n");
 
 	return jesd204_fsm_start(st->jdev, JESD204_LINKS_ALL);
 out:
 	return ret;
+}
+
+static int ad9172_remove(struct spi_device *spi)
+{
+	sysfs_remove_group(&spi->dev.kobj, &ad9172_reg_attr_group);
+	return 0;
 }
 
 static const struct spi_device_id ad9172_id[] = {
@@ -1258,6 +1367,7 @@ static struct spi_driver ad9172_driver = {
 		.of_match_table = of_match_ptr(ad9172_of_match),
 	},
 	.probe = ad9172_probe,
+	.remove = ad9172_remove,
 	.id_table = ad9172_id,
 };
 
