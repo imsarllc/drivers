@@ -70,6 +70,7 @@
 
 /* JESD204_RX_REG_LINK_CONF2 */
 #define JESD204_RX_LINK_CONF2_BUFFER_EARLY_RELEASE	BIT(16)
+#define JESD204_RX_LINK_CONF2_BUFFER_DELAY_MASK		GENMASK(9, 2)
 
 /* JESD204_RX_REG_IRQ_ENABLE */
 #define JESD204_RX_IRQ_FRAME_ALIGNMENT_ERROR		BIT(0) /* 204B only */
@@ -104,6 +105,8 @@ struct axi_jesd204_rx {
 	/* Used for probe ordering */
 	struct clk_hw dummy_clk;
 	struct clk *lane_clk;
+
+	u16 buffer_delay; // for LINK_CONF2[9:2] aka BUFFER_DELAY
 };
 
 enum {
@@ -125,6 +128,10 @@ static const char * const axi_jesd204_rx_link_status_64b66b_l[] = {
 	"BLOCK_SYNC",
 	"DATA",
 };
+
+static unsigned buffer_delay_default = 0; // Assume no delay
+module_param(buffer_delay_default, uint, 0644);
+MODULE_PARM_DESC(buffer_delay_default, "Default buffer delay");
 
 static unsigned long axi_jesd204_rx_calc_device_clk(struct axi_jesd204_rx *jesd,
 	unsigned long link_rate)
@@ -534,6 +541,28 @@ static int axi_jesd204_rx_apply_config(struct axi_jesd204_rx *jesd,
 		writel_relaxed(JESD204_RX_LINK_CONF2_BUFFER_EARLY_RELEASE,
 			       jesd->base + JESD204_RX_REG_LINK_CONF2);
 	}
+	else
+	{
+		// Set BUFFER_DELAY (LINK_CONF2[9:2])
+		val = FIELD_PREP(JESD204_RX_LINK_CONF2_BUFFER_DELAY_MASK, jesd->buffer_delay);
+		writel_relaxed(val, jesd->base + JESD204_RX_REG_LINK_CONF2);
+
+		// FIXUP: Some versions of this device shift this value incorrectly.
+		//        Detect and compensate if this is one of those versions.
+		val = readl_relaxed(jesd->base + JESD204_RX_REG_LINK_CONF2);
+		if (FIELD_GET(JESD204_RX_LINK_CONF2_BUFFER_DELAY_MASK, val) != jesd->buffer_delay)
+		{
+			dev_warn(jesd->dev, "Quirk detected: BUFFER_DELAY unexpected shift; using work-around\n");
+			val = jesd->buffer_delay; // Note: No offset to handle HDL bug
+			writel_relaxed(val, jesd->base + JESD204_RX_REG_LINK_CONF2);
+		}
+
+		val = readl_relaxed(jesd->base + JESD204_RX_REG_LINK_CONF2);
+		if (FIELD_GET(JESD204_RX_LINK_CONF2_BUFFER_DELAY_MASK, val) != jesd->buffer_delay)
+		{
+			dev_crit(jesd->dev, "Failed to set BUFFER_DELAY: unable to detect bitshift\n");
+		}
+	}
 
 	if (config->sysref.lmfc_offset != JESD204_LMFC_OFFSET_UNINITIALIZED)
 		writel_relaxed(config->sysref.lmfc_offset,
@@ -578,6 +607,12 @@ static int axi_jesd204_rx_parse_dt_config(struct device_node *np,
 	ret = of_property_read_u32(np, "adi,sysref-lmfc-offset", &val);
 	if (ret == 0)
 		config->sysref.lmfc_offset = val;
+
+	ret = of_property_read_u32(np, "adi,buffer-delay", &val);
+	if (ret == 0)
+		jesd->buffer_delay = val;
+	else
+		jesd->buffer_delay = buffer_delay_default;
 
 	return 0;
 }
