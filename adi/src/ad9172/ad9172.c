@@ -66,6 +66,10 @@ struct ad9172_state {
 	u32 clock_output_config;
 	u32 scrambling;
 	u32 sysref_mode;
+	u32 lmfc_delay;
+	u32 lmfc_variance;
+	u32 sysref_err_window;
+	u32 sysref_count;
 	bool pll_bypass;
 	signal_type_t syncoutb_type;
 	signal_coupling_t sysref_coupling;
@@ -77,6 +81,23 @@ struct ad9172_state {
 struct ad9172_jesd204_priv {
 	struct ad9172_state *st;
 };
+
+
+static unsigned lmfc_delay_default = 0; // Assume no delay
+module_param(lmfc_delay_default, uint, 0644);
+MODULE_PARM_DESC(lmfc_delay_default, "Default LMFC Delay");
+
+static unsigned lmfc_variance_default = 0xC; // max value according to DS
+module_param(lmfc_variance_default, uint, 0644);
+MODULE_PARM_DESC(lmfc_variance_default, "Default LMFC Variance");
+
+static unsigned sysref_err_window = 0;
+module_param(sysref_err_window, uint, 0644);
+MODULE_PARM_DESC(sysref_err_window, "Default SYSREF Error Window (DAC clocks)");
+
+static unsigned sysref_count = 0;
+module_param(sysref_count, uint, 0644);
+MODULE_PARM_DESC(sysref_count, "Default SYSREF Count");
 
 static const char * const clk_names[] = {
 	[CLK_DATA] = "jesd_dac_clk",	/* Not required with jesd204-fsm */
@@ -357,6 +378,14 @@ static int ad9172_setup(struct ad9172_state *st)
 				 st->conv.clk[CLK_DATA]);
 
 	ad917x_jesd_set_sysref_enable(ad917x_h, !!st->jesd_subclass);
+
+	ad917x_set_sysref_err_window(ad917x_h, st->sysref_err_window);
+
+	ad917x_set_sysref_count(ad917x_h, st->sysref_count);
+
+	ad917x_jesd_set_lmfc_delay(ad917x_h, JESD_LINK_ALL, st->lmfc_delay, st->lmfc_variance);
+
+	ad917x_trigger_sysref_sync(ad917x_h);
 
 	/*Enable Link*/
 	ret = ad917x_jesd_enable_link(ad917x_h, JESD_LINK_ALL, 0x1);
@@ -926,6 +955,19 @@ static int ad9172_parse_dt(struct spi_device *spi, struct ad9172_state *st)
 	if (ret)
 		for(i = 0; i < sizeof(st->logic_lanes); i++)
 			st->logic_lanes[i] = i;
+
+
+	if (of_property_read_u32(np, "adi,sysref-count", &st->sysref_count))
+		st->sysref_count = sysref_count;
+
+	if (of_property_read_u32(np, "adi,sysref-err-window", &st->sysref_err_window))
+		st->sysref_err_window = sysref_err_window;
+
+	if (of_property_read_u32(np, "adi,lmfc-delay", &st->lmfc_delay))
+		st->lmfc_delay = lmfc_delay_default;
+
+	if (of_property_read_u32(np, "adi,lmfc-variance", &st->lmfc_variance))
+		st->lmfc_variance = lmfc_variance_default;
 
 	return 0;
 }

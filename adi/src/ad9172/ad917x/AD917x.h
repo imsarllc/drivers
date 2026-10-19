@@ -491,6 +491,53 @@ int ad917x_jesd_get_sysref_enable(ad917x_handle_t *h, uint8_t *en);
  */
 int ad917x_jesd_set_lmfc_delay(ad917x_handle_t *h, jesd_link_t link,
 				       uint8_t delay, uint8_t var);
+
+
+/**
+ * \brief Set the SYSREF Error Window
+ *
+ * Amount of jitter allowed on the SYSREF± input.
+ * SYSREF± jitter variations larger than this trigger an
+ * interrupt. Units are in DAC clocks.
+ *
+ * \param h     Pointer to the AD917X device reference handle.
+ * \param err_window Maximum allowed jitter in the SYSREF signal (DAC clocks). Range 0 to 127
+ *
+ * \retval API_ERROR_OK API Completed Successfully
+ * \retval API_ERROR_INVALID_HANDLE_PTR Invalid reference handle.
+ * \retval API_ERROR_INVALID_XFER_PTR SPI Access Failed
+ * \retval API_ERROR_INVALID_PARAM    Invalid Parameter
+ */
+int ad917x_set_sysref_err_window(ad917x_handle_t *h, uint8_t err_window);
+
+/**
+ * \brief Set the SYSREF Count
+ *
+ * Set the number of SYSREF edges to ignore in one-shot mode.
+ *
+ * \param h     Pointer to the AD917X device reference handle.
+ * \param count Number of rising SYSREF± edges to ignore before
+ *
+ * \retval API_ERROR_OK API Completed Successfully
+ * \retval API_ERROR_INVALID_HANDLE_PTR Invalid reference handle.
+ * \retval API_ERROR_INVALID_XFER_PTR SPI Access Failed
+ * \retval API_ERROR_INVALID_PARAM    Invalid Parameter
+ */
+int ad917x_set_sysref_count(ad917x_handle_t *h, uint8_t count);
+
+
+/**
+ * \brief Start a one-shot SYSREF synchronization
+ *
+ * \param h     Pointer to the AD917X device reference handle.
+ *
+ * \retval API_ERROR_OK API Completed Successfully
+ * \retval API_ERROR_INVALID_HANDLE_PTR Invalid reference handle.
+ * \retval API_ERROR_INVALID_XFER_PTR SPI Access Failed
+ * \retval API_ERROR_INVALID_PARAM    Invalid Parameter
+ */
+int ad917x_trigger_sysref_sync(ad917x_handle_t *h);
+
 /**
  * \brief Enable the SYNCOUTB Output Signal
  *
