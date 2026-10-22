@@ -255,7 +255,7 @@ static int named_gpio_probe(struct platform_device *pdev)
 	if (IS_ERR(gdev->gpio_desc))
 	{
 		ret = PTR_ERR(gdev->gpio_desc);
-		dev_err(dev, "Failed to get GPIO from DT (error %d)\n", ret);
+		dev_err_probe(dev, "Failed to get GPIO from DT (error %d)\n", ret);
 		return ret;
 	}
 
