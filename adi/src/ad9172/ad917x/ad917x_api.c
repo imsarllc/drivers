@@ -632,3 +632,46 @@ int ad917x_get_page_idx(ad917x_handle_t *h, int *dac, int *channel)
 	return API_ERROR_OK;
 }
 
+
+int ad917x_set_sysref_err_window(ad917x_handle_t *h, uint8_t err_window)
+{
+	int err;
+
+	if (h == NULL)
+		return API_ERROR_INVALID_HANDLE_PTR;
+
+	err = ad917x_register_write(h, AD917X_SYSREF_ERR_WINDOW_REG, err_window & 0x7F);
+	if (err != API_ERROR_OK)
+		return err;
+
+	return API_ERROR_OK;
+}
+
+int ad917x_set_sysref_count(ad917x_handle_t *h, uint8_t count)
+{
+	int err;
+
+	if (h == NULL)
+		return API_ERROR_INVALID_HANDLE_PTR;
+
+	err = ad917x_register_write(h, AD917X_SYSREF_COUNT_REG, count & 0xFF);
+	if (err != API_ERROR_OK)
+		return err;
+
+	return API_ERROR_OK;
+}
+
+int ad917x_trigger_sysref_sync(ad917x_handle_t *h)
+{
+	int err;
+
+	if (h == NULL)
+		return API_ERROR_INVALID_HANDLE_PTR;
+
+	err = ad917x_register_write(h, AD917X_SYSREF_MODE, 0x02); // one-shot
+	if (err != API_ERROR_OK)
+		return err;
+	
+	return API_ERROR_OK;
+
+}

@@ -66,17 +66,39 @@ struct ad9172_state {
 	u32 clock_output_config;
 	u32 scrambling;
 	u32 sysref_mode;
+	u32 lmfc_delay;
+	u32 lmfc_variance;
+	u32 sysref_err_window;
+	u32 sysref_count;
 	bool pll_bypass;
 	signal_type_t syncoutb_type;
 	signal_coupling_t sysref_coupling;
 	u8 nco_main_enable;
 	u8 nco_channel_enable;
 	u8 logic_lanes[8];
+	u16 debug_reg_addr;
 };
 
 struct ad9172_jesd204_priv {
 	struct ad9172_state *st;
 };
+
+
+static unsigned lmfc_delay_default = 0; // Assume no delay
+module_param(lmfc_delay_default, uint, 0644);
+MODULE_PARM_DESC(lmfc_delay_default, "Default LMFC Delay");
+
+static unsigned lmfc_variance_default = 0xC; // max value according to DS
+module_param(lmfc_variance_default, uint, 0644);
+MODULE_PARM_DESC(lmfc_variance_default, "Default LMFC Variance");
+
+static unsigned sysref_err_window = 0;
+module_param(sysref_err_window, uint, 0644);
+MODULE_PARM_DESC(sysref_err_window, "Default SYSREF Error Window (DAC clocks)");
+
+static unsigned sysref_count = 0;
+module_param(sysref_count, uint, 0644);
+MODULE_PARM_DESC(sysref_count, "Default SYSREF Count");
 
 static const char * const clk_names[] = {
 	[CLK_DATA] = "jesd_dac_clk",	/* Not required with jesd204-fsm */
@@ -358,6 +380,14 @@ static int ad9172_setup(struct ad9172_state *st)
 
 	ad917x_jesd_set_sysref_enable(ad917x_h, !!st->jesd_subclass);
 
+	ad917x_set_sysref_err_window(ad917x_h, st->sysref_err_window);
+
+	ad917x_set_sysref_count(ad917x_h, st->sysref_count);
+
+	ad917x_jesd_set_lmfc_delay(ad917x_h, JESD_LINK_ALL, st->lmfc_delay, st->lmfc_variance);
+
+	ad917x_trigger_sysref_sync(ad917x_h);
+
 	/*Enable Link*/
 	ret = ad917x_jesd_enable_link(ad917x_h, JESD_LINK_ALL, 0x1);
 	if (ret != 0) {
@@ -479,6 +509,7 @@ static const struct regmap_config ad9172_regmap_config = {
 	.val_bits = 8,
 	.read_flag_mask = 0x80,
 	.cache_type = REGCACHE_NONE,
+	.max_register = 0x7B5,
 };
 
 static int delay_us(void *user_data, unsigned int us)
@@ -623,6 +654,103 @@ static ssize_t ad9172_attr_show(struct device *dev,
 
 	return ret;
 }
+
+static ssize_t reg_address_show(struct device *dev,
+				 struct device_attribute *attr,
+				 char *buf)
+{
+	struct spi_device *spi = to_spi_device(dev);
+	struct cf_axi_converter *conv = spi_get_drvdata(spi);
+	struct ad9172_state *st = container_of(conv, struct ad9172_state, conv);
+	int ret;
+
+	mutex_lock(&conv->lock);
+	ret = sprintf(buf, "0x%03x\n", st->debug_reg_addr);
+	mutex_unlock(&conv->lock);
+
+	return ret;
+}
+
+static ssize_t reg_address_store(struct device *dev,
+				  struct device_attribute *attr,
+				  const char *buf, size_t len)
+{
+	struct spi_device *spi = to_spi_device(dev);
+	struct cf_axi_converter *conv = spi_get_drvdata(spi);
+	struct ad9172_state *st = container_of(conv, struct ad9172_state, conv);
+	u16 addr;
+	int ret;
+
+	ret = kstrtou16(buf, 0, &addr);
+	if (ret)
+		return ret;
+
+	if (addr > 0x7B5)
+		return -EINVAL;
+
+	mutex_lock(&conv->lock);
+	st->debug_reg_addr = addr;
+	mutex_unlock(&conv->lock);
+
+	return len;
+}
+
+static ssize_t reg_value_show(struct device *dev,
+			      struct device_attribute *attr,
+			      char *buf)
+{
+	struct spi_device *spi = to_spi_device(dev);
+	struct cf_axi_converter *conv = spi_get_drvdata(spi);
+	struct ad9172_state *st = container_of(conv, struct ad9172_state, conv);
+	u32 val;
+	int ret;
+
+	mutex_lock(&conv->lock);
+	ret = regmap_read(st->map, st->debug_reg_addr, &val);
+	mutex_unlock(&conv->lock);
+
+	if (ret < 0)
+		return ret;
+
+	return sprintf(buf, "0x%02x\n", val);
+}
+
+static ssize_t reg_value_store(struct device *dev,
+			       struct device_attribute *attr,
+			       const char *buf, size_t len)
+{
+	struct spi_device *spi = to_spi_device(dev);
+	struct cf_axi_converter *conv = spi_get_drvdata(spi);
+	struct ad9172_state *st = container_of(conv, struct ad9172_state, conv);
+	u32 val;
+	int ret;
+
+	ret = kstrtou32(buf, 0, &val);
+	if (ret)
+		return ret;
+
+	if (val > 0xFF)
+		return -EINVAL;
+
+	mutex_lock(&conv->lock);
+	ret = regmap_write(st->map, st->debug_reg_addr, val);
+	mutex_unlock(&conv->lock);
+
+	return ret ? ret : len;
+}
+
+static DEVICE_ATTR_RW(reg_address);
+static DEVICE_ATTR_RW(reg_value);
+
+static struct attribute *ad9172_reg_attrs[] = {
+	&dev_attr_reg_address.attr,
+	&dev_attr_reg_value.attr,
+	NULL,
+};
+
+static const struct attribute_group ad9172_reg_attr_group = {
+	.attrs = ad9172_reg_attrs,
+};
 
 static IIO_DEVICE_ATTR(out_voltage0_nco_frequency, 0644,
 		       ad9172_attr_show,
@@ -927,6 +1055,19 @@ static int ad9172_parse_dt(struct spi_device *spi, struct ad9172_state *st)
 		for(i = 0; i < sizeof(st->logic_lanes); i++)
 			st->logic_lanes[i] = i;
 
+
+	if (of_property_read_u32(np, "adi,sysref-count", &st->sysref_count))
+		st->sysref_count = sysref_count;
+
+	if (of_property_read_u32(np, "adi,sysref-err-window", &st->sysref_err_window))
+		st->sysref_err_window = sysref_err_window;
+
+	if (of_property_read_u32(np, "adi,lmfc-delay", &st->lmfc_delay))
+		st->lmfc_delay = lmfc_delay_default;
+
+	if (of_property_read_u32(np, "adi,lmfc-variance", &st->lmfc_variance))
+		st->lmfc_variance = lmfc_variance_default;
+
 	return 0;
 }
 
@@ -1181,11 +1322,21 @@ static int ad9172_probe(struct spi_device *spi)
 
 	spi_set_drvdata(spi, conv);
 
+	ret = sysfs_create_group(&spi->dev.kobj, &ad9172_reg_attr_group);
+	if (ret)
+		dev_warn(&spi->dev, "Failed to create sysfs register attributes\n");
+
 	dev_info(&spi->dev, "Probed.\n");
 
 	return jesd204_fsm_start(st->jdev, JESD204_LINKS_ALL);
 out:
 	return ret;
+}
+
+static int ad9172_remove(struct spi_device *spi)
+{
+	sysfs_remove_group(&spi->dev.kobj, &ad9172_reg_attr_group);
+	return 0;
 }
 
 static const struct spi_device_id ad9172_id[] = {
@@ -1216,6 +1367,7 @@ static struct spi_driver ad9172_driver = {
 		.of_match_table = of_match_ptr(ad9172_of_match),
 	},
 	.probe = ad9172_probe,
+	.remove = ad9172_remove,
 	.id_table = ad9172_id,
 };
 
